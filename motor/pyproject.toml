@@ -1,0 +1,47 @@
+[project]
+name = "falab-motor"
+version = "0.1.0"
+description = "Motor local de IA y audio de falab (separación, análisis, exportación)"
+# 3.11 es la versión donde Demucs, BasicPitch (CoreML) y mlx-whisper conviven sin TensorFlow.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "numpy",
+  "scipy",
+  "librosa>=0.10.2",
+  "soundfile",
+  "fastapi",
+  "uvicorn[standard]",
+  "python-multipart",
+  "pretty_midi",
+  "music21",
+  "fpdf2",
+  "pyrubberband",
+  "google-api-python-client",
+  "google-auth-oauthlib",
+]
+
+[project.optional-dependencies]
+# Modelos de IA: se instalan aparte porque pesan varios GB.
+ia = [
+  # <2.6: a partir de 2.6 torch.load exige weights_only y Demucs 4.0.1 no lo contempla.
+  "torch>=2.2,<2.6",
+  "torchaudio>=2.2,<2.6",
+  "demucs==4.0.1",
+  "basic-pitch==0.4.0",
+  "mlx-whisper; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "faster-whisper; sys_platform != 'darwin' or platform_machine != 'arm64'",
+]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+falab-motor = "falab_motor.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["falab_motor*"]
+
+[tool.pytest.ini_options]
+testpaths = ["pruebas"]
