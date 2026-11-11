@@ -8,15 +8,25 @@ RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 CON_IA=1
 [[ "${1:-}" == "--sin-ia" ]] && CON_IA=0
 
-echo "==> 1/5 Herramientas del sistema (Homebrew)"
+echo "==> 1/5 Herramientas del sistema"
+# En Apple Silicon, Homebrew vive en /opt/homebrew y no siempre está en el PATH de la terminal.
+if ! command -v brew >/dev/null && [[ -x /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
 if ! command -v brew >/dev/null; then
   echo "Falta Homebrew. Instálalo desde https://brew.sh y vuelve a ejecutar este script." >&2
   exit 1
 fi
-brew install ffmpeg rubberband uv node rustup
-command -v cargo >/dev/null || rustup-init -y --no-modify-path
+if ! xcode-select -p >/dev/null 2>&1; then
+  echo "Faltan las herramientas de desarrollo de Xcode. Ejecuta:  xcode-select --install" >&2
+  exit 1
+fi
+brew install ffmpeg rubberband uv node
+# Rust con el instalador oficial: el paquete «rustup» de Homebrew no deja cargo en el PATH.
+if ! command -v cargo >/dev/null && [[ ! -x "$HOME/.cargo/bin/cargo" ]]; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+fi
 export PATH="$HOME/.cargo/bin:$PATH"
-xcode-select -p >/dev/null 2>&1 || { echo "Instala las herramientas de Xcode: xcode-select --install" >&2; exit 1; }
 
 echo "==> 2/5 Motor de audio (Python 3.11 en un entorno aislado)"
 cd "$RAIZ/motor"
