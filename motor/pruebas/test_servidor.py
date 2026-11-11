@@ -58,20 +58,26 @@ def test_flujo_completo_por_la_api(carpeta_de_datos):
     assert cliente.get("/proyectos").json() == []
 
 
-def test_importar_sin_modelos_de_ia_crea_un_proyecto_utilizable(carpeta_de_datos, tmp_path):
-    """Sin Demucs/Whisper/BasicPitch instalados el pipeline degrada con avisos, no falla."""
+def test_importar_sin_etapas_de_ia_crea_un_proyecto_utilizable(carpeta_de_datos, tmp_path):
+    """Con las etapas de IA desactivadas se obtiene un proyecto de una pista con tempo y acordes.
+
+    Las etapas se desactivan explícitamente para que la prueba no dependa de si los modelos
+    están instalados (con ellos instalados ejecutaría Demucs y descargaría Whisper).
+    """
     import soundfile as sf
 
     ondas, _ = demo.sintetizar(vueltas=1)
     entrada = tmp_path / "canción de prueba.wav"
     sf.write(str(entrada), sum(ondas.values()), FS)
     cliente = TestClient(servidor.app)
-    trabajo = _esperar(cliente, cliente.post("/proyectos/importar", json={"ruta": str(entrada)}).json())
+    trabajo = _esperar(cliente, cliente.post("/proyectos/importar", json={
+        "ruta": str(entrada),
+        "opciones": {"separar": False, "extraerNotas": False, "transcribirLetras": False},
+    }).json())
     assert trabajo["estado"] == "completado", trabajo
     proyecto = cliente.get(f"/proyectos/{trabajo['resultado']['id']}").json()
     assert [x["id"] for x in proyecto["pistas"]] == ["mezcla"]
     assert abs(proyecto["bpm"] - demo.BPM) < 2
-    assert any("falta instalar" in a for a in proyecto["avisos"])
     analisis = cliente.get(f"/proyectos/{proyecto['id']}/analisis").json()
     assert [a["nombre"] for a in analisis["acordes"]][:3] == ["C", "Am", "F"]
     assert analisis["acordes"][3]["raiz"] == 7
