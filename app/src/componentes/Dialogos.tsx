@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { usarApp } from "../estado/almacen";
-import { enEscritorio, motor, type PeticionExportar } from "../servicios/motor";
+import { enEscritorio, motor, type EstadoDrive, type PeticionExportar } from "../servicios/motor";
 import { IconoCerrar } from "../util/iconos";
 import { SelectorCifrado } from "../vistas/Cancionero";
 
@@ -68,7 +68,6 @@ export function DialogoExportar() {
 
 // ------------------------------------------------------------------- Drive
 
-type EstadoDrive = { configurado: boolean; conectado: boolean; rutaCredenciales: string };
 type Remoto = { id: string; nombre: string; modificado: string; enLocal: boolean };
 
 export function DialogoDrive() {
@@ -77,6 +76,7 @@ export function DialogoDrive() {
   const [estado, fijarEstado] = useState<EstadoDrive | null>(null);
   const [remotos, fijarRemotos] = useState<Remoto[] | null>(null);
   const [ocupado, fijarOcupado] = useState(false);
+  const automatico = usarApp((s) => s.driveAutomatico);
   const error = (e: unknown) => fijar({ aviso: { texto: `Google Drive: ${(e as Error).message}`, tipo: "error" } });
 
   const refrescar = async () => {
@@ -123,6 +123,25 @@ export function DialogoDrive() {
         )}
         {estado?.conectado && (
           <>
+            <label className="fila-opcion" style={{ cursor: "pointer" }}>
+              <input type="checkbox" checked={automatico}
+                onChange={async (e) => { await usarApp.getState().fijarDriveAutomatico(e.target.checked); void refrescar(); }} />
+              <span className="descripcion">
+                Guardado automático
+                <div className="tenue" style={{ fontSize: 11.5 }}>
+                  Cada cambio se sube solo en segundo plano. Si no hay internet, queda en cola y se reintenta;
+                  la música siempre se reproduce desde este equipo.
+                </div>
+              </span>
+            </label>
+            {automatico && (
+              <p className="tenue" style={{ fontSize: 12, margin: "2px 0 8px" }}>
+                {estado.pendientes.length
+                  ? `${estado.pendientes.length} proyecto(s) pendiente(s) de subir.`
+                  : "Todo sincronizado."}
+                {estado.ultimoError && ` Último intento fallido: ${estado.ultimoError}`}
+              </p>
+            )}
             {proyecto && (
               <div className="fila-opcion">
                 <span className="descripcion">Subir los cambios de «{proyecto.nombre}»</span>
@@ -204,7 +223,7 @@ export function Aviso() {
               const nombre = ruta.split(/[\\/]/).pop();
               return enEscritorio
                 ? <a key={ruta} href="#" onClick={(e) => { e.preventDefault(); void mostrar(ruta); }}>{nombre} — mostrar en Finder</a>
-                : <a key={ruta} href={motor.urlExportacion(proyecto?.id ?? "", ruta)} download>{nombre}</a>;
+                : <a key={ruta} href={motor.urlExportacion(aviso.idProyecto ?? proyecto?.id ?? "", ruta)} download>{nombre}</a>;
             })}
           </div>
         )}

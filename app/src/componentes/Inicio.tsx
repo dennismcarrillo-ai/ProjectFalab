@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { usarApp } from "../estado/almacen";
 import { enEscritorio, type OpcionesImportar } from "../servicios/motor";
-import { formatearTiempo } from "../util/formato";
+import { Biblioteca } from "./Biblioteca";
 import { IconoNube } from "../util/iconos";
 
-const EXTENSIONES = ["mp3", "wav", "flac", "ogg", "aac", "m4a", "mp4", "mov", "mkv"];
+const EXTENSIONES = ["mp3", "wav", "flac", "ogg", "aac", "m4a", "mp4", "mov", "mkv", "falab"];
 
 /** Pantalla de inicio: importar una canción o un video y abrir proyectos anteriores. */
 export function Inicio() {
-  const proyectos = usarApp((s) => s.proyectos);
   const salud = usarApp((s) => s.salud);
-  const { importar, abrir, crearDemo, eliminarProyecto, fijar } = usarApp.getState();
+  const { importar, crearDemo, fijar } = usarApp.getState();
   const [encima, fijarEncima] = useState(false);
   const [opciones, fijarOpciones] = useState<OpcionesImportar>({
     separar: true, antiBleed: true, extraerNotas: true, transcribirLetras: true, calidadLetras: "equilibrado", idioma: null,
@@ -42,7 +41,7 @@ export function Inicio() {
       return;
     }
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const ruta = await open({ multiple: false, filters: [{ name: "Audio y video", extensions: EXTENSIONES }] });
+    const ruta = await open({ multiple: false, filters: [{ name: "Audio, video o proyecto de falab", extensions: EXTENSIONES }] });
     if (typeof ruta === "string") void importar(ruta, opciones);
   };
 
@@ -73,7 +72,7 @@ export function Inicio() {
           if (archivo && !enEscritorio) void importar(archivo, opciones);
         }}>
         <strong>Arrastra aquí una canción o un video</strong>
-        <div className="tenue">MP3 · WAV · FLAC · OGG · AAC · MP4 · MOV · MKV</div>
+        <div className="tenue">MP3 · WAV · FLAC · OGG · AAC · MP4 · MOV · MKV · o un proyecto exportado (.falab)</div>
         <div className="acciones">
           <button className="primario" onClick={elegir}>Elegir archivo…</button>
           <button onClick={() => void crearDemo()} title="Crea un proyecto con audio sintético para probar la interfaz sin modelos de IA">
@@ -115,26 +114,7 @@ export function Inicio() {
         {c && !c.ffmpeg && <p className="falta" style={{ color: "var(--ambar)" }}>No se encuentra FFmpeg: instálalo con «brew install ffmpeg» para poder importar archivos.</p>}
       </div>
 
-      {proyectos.length > 0 && (
-        <div className="lista-proyectos vidrio">
-          <h3>Proyectos recientes</h3>
-          {proyectos.map((p) => (
-            <div className="proyecto-fila" key={p.id} onClick={() => void abrir(p.id)} role="button" tabIndex={0}
-              onKeyDown={(e) => e.key === "Enter" && void abrir(p.id)}>
-              <span className="titulo">{p.nombre}</span>
-              <span className="tenue mono">{formatearTiempo(p.duracion, 0)}</span>
-              <span className="tenue mono">{Math.round(p.bpm)} BPM</span>
-              <span className="tenue">{p.pistas} pistas</span>
-              <span className="tenue">{new Date(p.modificado).toLocaleDateString("es")}</span>
-              <button className="plano" title="Eliminar el proyecto de este equipo"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (window.confirm(`¿Eliminar «${p.nombre}» de este equipo? No se puede deshacer.`)) void eliminarProyecto(p.id);
-                }}>Eliminar</button>
-            </div>
-          ))}
-        </div>
-      )}
+      <Biblioteca />
     </div>
   );
 }

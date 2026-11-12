@@ -161,21 +161,41 @@ def construir_pistas(p: dict, carpeta: Path, stems: dict[str, Path], mezcla: Pat
         p["pistas"].append(modelo.nueva_pista(id_pista, nombre, color, frames))
 
 
-def _acordes(notas: dict, stems: dict[str, Path], mezcla: Path, mapa: dict, duracion: float) -> dict:
-    limites = acordes.limites_de_analisis(mapa, duracion)
+def _acordes(notas: dict, stems: dict[str, Path], mezcla: Path, mapa: dict, duracion: float,
+             detalle: str = "normal") -> dict:
+    subdivisiones, coste = acordes.DETALLES.get(detalle, acordes.DETALLES["normal"])
+    limites = acordes.limites_de_analisis(mapa, duracion, subdivisiones)
     armonicas = [n for s in ("guitarra", "piano", "otros") for n in notas.get(s, [])]
     if armonicas:
         croma = acordes.croma_desde_notas(armonicas, limites)
         croma_bajo = acordes.croma_desde_notas(notas.get("bajo", []), limites)
-        return acordes.detectar(limites, croma, croma_bajo)
-    # Sin notas de BasicPitch: se analiza directamente el audio armónico.
-    import librosa
+        resultado = acordes.detectar(limites, croma, croma_bajo, coste_cambio=coste)
+    else:
+        # Sin notas de BasicPitch: se analiza directamente el audio armónico.
+        import librosa
 
-    fs = 22050
-    rutas = [stems[s] for s in ("guitarra", "piano", "otros") if s in stems] or [mezcla]
-    onda = sum(librosa.load(str(r), sr=fs, mono=True)[0] for r in rutas)
-    croma = acordes.croma_desde_audio(np.asarray(onda), fs, limites)
-    croma_bajo = None
-    if "bajo" in stems:
-        croma_bajo = acordes.croma_desde_audio(librosa.load(str(stems["bajo"]), sr=fs, mono=True)[0], fs, limites)
-    return acordes.detectar(limites, croma, croma_bajo)
+        fs = 22050
+        rutas = [stems[s] for s in ("guitarra", "piano", "otros") if s in stems] or [mezcla]
+        onda = sum(librosa.load(str(r), sr=fs, mono=True)[0] for r in rutas)
+        croma = acordes.croma_desde_audio(np.asarray(onda), fs, limites)
+        croma_bajo = None
+        if "bajo" in stems:
+            croma_bajo = acordes.croma_desde_audio(librosa.load(str(stems["bajo"]), sr=fs, mono=True)[0], fs, limites)
+        resultado = acordes.detectar(limites, croma, croma_bajo, coste_cambio=coste)
+    resultado["detalle"] = detalle
+    return resultado
+
+
+def recalcular_acordes(id_proyecto: str, detalle: str, trabajo: Trabajo) -> dict:
+    """Vuelve a cifrar los acordes con otro nivel de detalle, sin repetir la separación ni las notas."""
+    if detalle not in acordes.DETALLES:
+        raise ValueError(f"Nivel de detalle no válido: {detalle}")
+    p = modelo.cargar(id_proyecto)
+    carpeta = modelo.carpeta(id_proyecto)
+    trabajo.informar(0.1, "Cifrando acordes")
+    stems = {f["id"]: carpeta / f["archivo"] for f in p["fuentes"] if f["id"] in config.ORDEN_PISTAS}
+    mapa = modelo.leer_analisis(id_proyecto, "mapa_tempo", {"bpm": p["bpm"], "compas": p["compas"], "pulsos": []})
+    notas = modelo.leer_analisis(id_proyecto, "notas", {})
+    resultado = _acordes(notas, stems, carpeta / "audio" / "mezcla.flac", mapa, p["duracion"], detalle)
+    modelo.escribir_analisis(id_proyecto, "acordes", resultado)
+    return {"acordes": len(resultado["acordes"]), "detalle": detalle}

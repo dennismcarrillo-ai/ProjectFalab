@@ -5,7 +5,19 @@
  *   de sesión nunca llega a JavaScript y no hay problemas de CORS ni de contenido mixto.
  * - En un navegador (desarrollo con `npm run dev`) se llama al motor directamente por HTTP.
  */
-import type { Analisis, Cifrado, Proyecto, ResumenProyecto, Salud, Trabajo } from "../tipos";
+import type {
+  Analisis, Cifrado, DetalleAcordes, Playlist, Proyecto, ResumenProyecto, Salud, Trabajo,
+} from "../tipos";
+
+export interface EstadoDrive {
+  configurado: boolean;
+  conectado: boolean;
+  rutaCredenciales: string;
+  automatico: boolean;
+  pendientes: string[];
+  ultimoError: string | null;
+  ultimaSincronizacion: string | null;
+}
 
 export const enEscritorio = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const URL_NAVEGADOR: string = import.meta.env?.VITE_MOTOR_URL ?? "http://127.0.0.1:8765";
@@ -69,6 +81,16 @@ export const motor = {
   guardar: (p: Proyecto) => json<{ modificado: string }>("PUT", `/proyectos/${p.id}`, p),
   eliminar: (id: string) => json("DELETE", `/proyectos/${id}`),
   demo: () => json<Trabajo>("POST", "/proyectos/demo"),
+  biblioteca: () => json<{ playlists: Playlist[]; ajustes: { driveAutomatico: boolean } }>("GET", "/biblioteca"),
+  guardarPlaylists: (playlists: Playlist[]) =>
+    json<{ playlists: Playlist[] }>("PUT", "/biblioteca/playlists", { playlists }),
+  guardarAjustes: (ajustes: { driveAutomatico: boolean }) => json("PUT", "/biblioteca/ajustes", ajustes),
+  empaquetar: (id: string, destino?: string) => json<Trabajo>("POST", `/proyectos/${id}/empaquetar`, { destino }),
+  importarPaquete: (ruta: string) => json<Trabajo>("POST", "/proyectos/importar-paquete", { ruta }),
+  editarLetras: (id: string, lineas: { inicio: number; texto: string }[]) =>
+    json("PUT", `/proyectos/${id}/letras`, { lineas }),
+  recalcularAcordes: (id: string, detalle: DetalleAcordes) =>
+    json<Trabajo>("POST", `/proyectos/${id}/acordes`, { detalle }),
   importarRuta: (ruta: string, opciones: OpcionesImportar) =>
     json<Trabajo>("POST", "/proyectos/importar", { ruta, opciones }),
   /** Solo en navegador: sube el archivo porque la página no conoce su ruta en disco. */
@@ -95,7 +117,7 @@ export const motor = {
   trabajo: (id: string) => json<Trabajo>("GET", `/trabajos/${id}`),
   cancelar: (id: string) => json("POST", `/trabajos/${id}/cancelar`),
   drive: {
-    estado: () => json<{ configurado: boolean; conectado: boolean; rutaCredenciales: string }>("GET", "/drive/estado"),
+    estado: () => json<EstadoDrive>("GET", "/drive/estado"),
     conectar: () => json<{ configurado: boolean; conectado: boolean }>("POST", "/drive/conectar"),
     desconectar: () => json("POST", "/drive/desconectar"),
     proyectos: () =>

@@ -17,7 +17,13 @@ no hay servidores ni coste por uso, y tu música no sale de tu ordenador.
 - **Vistas** Karaoke, Cancionero y Partitura.
 - **Exportación**: mezcla o pistas en WAV/FLAC/MP3, video con la nueva mezcla, cancionero
   (PDF/TXT), partitura (MusicXML), MIDI y tablatura.
-- **Google Drive**: sincronización de proyectos en la carpeta `falab_projects`.
+- **Biblioteca y playlists**: ficha de cada proyecto (peso, archivos, tempo, tonalidad), listas
+  con orden manual, alfabético, por duración, BPM o tonalidad (cromática o círculo de quintas),
+  panel lateral y botones de canción anterior/siguiente.
+- **Proyectos portátiles**: exportar e importar un proyecto completo como archivo `.falab`.
+- **Letra editable** y **detalle de acordes** ajustable para recuperar los acordes de paso.
+- **Google Drive**: sincronización de proyectos en la carpeta `falab_projects`, manual o
+  automática (con cola y reintentos si no hay conexión).
 
 ## Instalación en macOS (Apple Silicon)
 
@@ -76,12 +82,11 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, API | Probado (16 pruebas automáticas) |
-| Edición, EQ y reproductor (velocidad, tono, bucle, metrónomo, cuenta regresiva) | Probado (25 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (19 pruebas automáticas) |
+| Edición, EQ, reproductor y orden de playlists | Probado (33 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
-| Inferencia real de Demucs, BasicPitch y Whisper | **Pendiente de probar en la Mac**: el código sigue las API publicadas de cada paquete, pero no se ha ejecutado con los modelos |
-| Carcasa Tauri (Rust) | **Pendiente de compilar en la Mac** |
-| Google Drive | **Pendiente de probar** con credenciales reales |
+| Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
+| Google Drive (subida, descarga y guardado automático) | La cola automática está probada con un Drive simulado; **pendiente de confirmar** contra Drive real |
 
 ## Limitaciones conocidas
 

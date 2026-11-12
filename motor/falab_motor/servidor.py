@@ -12,7 +12,7 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFil
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import __version__, config, drive, medios, proyecto as modelo
+from . import __version__, biblioteca, config, drive, edicion_letras, medios, paquete, proyecto as modelo
 from .exportacion import cancionero
 from .exportacion.exportar import exportar
 from .pipeline import acordes as modulo_acordes
@@ -94,8 +94,19 @@ async def subir(archivo: UploadFile = File(...), opciones: str = Form("{}")) -> 
     destino.parent.mkdir(parents=True, exist_ok=True)
     with open(destino, "wb") as salida:
         shutil.copyfileobj(archivo.file, salida)
+    if destino.suffix.lower() == paquete.EXTENSION:
+        return trabajos.lanzar("importar", lambda t: paquete.importar(destino, t)).a_dict()
     opciones_dict = json.loads(opciones or "{}")
     return trabajos.lanzar("importar", lambda t: orquestador.importar(destino, opciones_dict, t)).a_dict()
+
+
+@app.post("/proyectos/importar-paquete")
+def importar_paquete(cuerpo: dict = Body(...)) -> dict:
+    """Importa un proyecto completo desde un archivo .falab del disco."""
+    ruta = cuerpo.get("ruta")
+    if not ruta:
+        raise HTTPException(400, "Falta la ruta del archivo.")
+    return trabajos.lanzar("importar", lambda t: paquete.importar(Path(ruta), t)).a_dict()
 
 
 @app.post("/proyectos/demo")
@@ -134,6 +145,7 @@ def guardar_proyecto(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
         if campo in cuerpo:
             p[campo] = cuerpo[campo]
     modelo.guardar(p)
+    drive.anotar_cambio(id_proyecto)
     return {"modificado": p["modificado"]}
 
 
@@ -141,7 +153,63 @@ def guardar_proyecto(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
 def eliminar_proyecto(id_proyecto: str) -> dict:
     _proyecto(id_proyecto)
     modelo.eliminar(id_proyecto)
+    biblioteca.olvidar_proyecto(id_proyecto)
     return {"eliminado": True}
+
+
+@app.post("/proyectos/{id_proyecto}/empaquetar")
+def empaquetar(id_proyecto: str, cuerpo: dict = Body(default={})) -> dict:
+    """Exporta el proyecto completo a un archivo .falab."""
+    _proyecto(id_proyecto)
+    destino = cuerpo.get("destino")
+    return trabajos.lanzar("exportar", lambda t: paquete.exportar(id_proyecto, destino, t)).a_dict()
+
+
+@app.put("/proyectos/{id_proyecto}/letras")
+def editar_letras(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
+    """Guarda la letra corregida a mano. La transcripción original se conserva aparte."""
+    _proyecto(id_proyecto)
+    actuales = modelo.leer_analisis(id_proyecto, "letras", {"idioma": None, "segmentos": []})
+    if modelo.leer_analisis(id_proyecto, "letras_original") is None:
+        modelo.escribir_analisis(id_proyecto, "letras_original", actuales)
+    try:
+        nuevas = edicion_letras.aplicar(actuales, cuerpo.get("lineas", []))
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(400, "Líneas de letra no válidas.") from error
+    modelo.escribir_analisis(id_proyecto, "letras", nuevas)
+    drive.anotar_cambio(id_proyecto)
+    return {"segmentos": len(nuevas["segmentos"])}
+
+
+@app.post("/proyectos/{id_proyecto}/acordes")
+def recalcular_acordes(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
+    """Vuelve a cifrar los acordes con otro nivel de detalle (normal, alto o maximo)."""
+    _proyecto(id_proyecto)
+    detalle = cuerpo.get("detalle", "normal")
+    if detalle not in modulo_acordes.DETALLES:
+        raise HTTPException(400, "Nivel de detalle no válido.")
+    return trabajos.lanzar("acordes", lambda t: orquestador.recalcular_acordes(id_proyecto, detalle, t)).a_dict()
+
+
+# ---------------------------------------------------------------- biblioteca
+
+@app.get("/biblioteca")
+def obtener_biblioteca() -> dict:
+    datos = biblioteca.cargar()
+    return {"playlists": datos["playlists"], "ajustes": datos["ajustes"]}
+
+
+@app.put("/biblioteca/playlists")
+def guardar_playlists(cuerpo: dict = Body(...)) -> dict:
+    try:
+        return {"playlists": biblioteca.fijar_playlists(cuerpo.get("playlists", []))}
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.put("/biblioteca/ajustes")
+def guardar_ajustes(cuerpo: dict = Body(...)) -> dict:
+    return {"ajustes": biblioteca.fijar_ajustes(cuerpo)}
 
 
 # ------------------------------------------------------------- audio y ondas
@@ -190,6 +258,8 @@ def analisis(id_proyecto: str, cifrado: str = "estandar", transponer: int = 0) -
         "letras": letras,
         "cancionero": cancionero.construir(letras, con_nombres["acordes"], p["duracion"]),
         "pistasConNotas": [k for k, v in notas.items() if v],
+        "detalleAcordes": (modelo.leer_analisis(id_proyecto, "acordes", {}) or {}).get("detalle", "normal"),
+        "letraEditada": bool(letras.get("editada")),
     }
 
 

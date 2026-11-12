@@ -6,7 +6,7 @@ import socket
 
 import uvicorn
 
-from . import config
+from . import config, drive
 
 
 def _puerto_libre() -> int:
@@ -20,6 +20,7 @@ def main() -> None:
     analizador.add_argument("--puerto", type=int, default=0, help="0 = elegir un puerto libre")
     argumentos = analizador.parse_args()
     config.asegurar_carpetas()
+    drive.arrancar_sincronizador()
     puerto = argumentos.puerto or _puerto_libre()
     # La aplicación de escritorio lee esta línea para saber dónde escucha el motor.
     print(f"FALAB_MOTOR_LISTO puerto={puerto}", flush=True)

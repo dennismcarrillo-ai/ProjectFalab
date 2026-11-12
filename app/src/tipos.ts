@@ -80,6 +80,13 @@ export interface Proyecto {
   avisos: string[];
 }
 
+export interface Tonalidad {
+  tonica: number;
+  modo: string;
+  bemoles: boolean;
+  nombre: string;
+}
+
 export interface ResumenProyecto {
   id: string;
   nombre: string;
@@ -87,7 +94,26 @@ export interface ResumenProyecto {
   duracion: number;
   bpm: number;
   pistas: number;
+  /** Tamaño en disco, en bytes. */
+  peso: number;
+  archivos: number;
+  tieneVideo: boolean;
+  tonalidad: Tonalidad | null;
+  /** Tonalidad del arranque de la canción (la que cuenta al ordenar un popurrí). */
+  tonalidadInicial: Tonalidad | null;
 }
+
+export type OrdenPlaylist = "manual" | "alfabetico" | "duracion" | "bpm" | "tonalidad" | "quintas";
+
+/** Una playlist es una lista ordenada de identificadores de proyecto. */
+export interface Playlist {
+  id: string;
+  nombre: string;
+  orden: OrdenPlaylist;
+  proyectos: string[];
+}
+
+export type DetalleAcordes = "normal" | "alto" | "maximo";
 
 export interface Pulso {
   t: number;
@@ -130,11 +156,13 @@ export type Cifrado = "estandar" | "jazz" | "latino";
 
 export interface Analisis {
   mapaTempo: { bpm: number; compas: number; pulsos: Pulso[] };
-  tonalidad: { tonica: number; modo: string; bemoles: boolean; nombre: string };
+  tonalidad: Tonalidad;
   acordes: Acorde[];
   letras: { idioma: string | null; segmentos: SegmentoLetra[] };
   cancionero: LineaCancionero[];
   pistasConNotas: string[];
+  detalleAcordes: DetalleAcordes;
+  letraEditada: boolean;
 }
 
 export interface Trabajo {

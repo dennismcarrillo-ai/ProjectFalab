@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Aviso, DialogoDrive, DialogoExportar, Progreso } from "./componentes/Dialogos";
+import { Biblioteca } from "./componentes/Biblioteca";
 import { Editor } from "./componentes/Editor";
 import { Inicio } from "./componentes/Inicio";
 import { Transporte } from "./componentes/Transporte";
@@ -55,6 +56,9 @@ function usarAtajos() {
       else if (orden && tecla === "d") { hecho(); app.duplicar(); }
       else if (!orden && tecla === "s") { hecho(); app.dividirEnCursor(); }
       else if (!orden && tecla === "l") { hecho(); app.alternarBucle(); }
+      else if (!orden && tecla === "b") { hecho(); app.fijar({ panelLateral: !app.panelLateral }); }
+      else if (e.key === "PageDown") { hecho(); void app.irA(1); }
+      else if (e.key === "PageUp") { hecho(); void app.irA(-1); }
       else if (e.key === "Delete" || e.key === "Backspace") { hecho(); app.eliminarSeleccion(); }
       else if (e.key === "Escape") { app.seleccionar([], null); app.fijarRango(null); }
     };
@@ -70,7 +74,16 @@ export function App() {
   const guardado = usarApp((s) => s.guardado);
   const salud = usarApp((s) => s.salud);
   const errorMotor = usarApp((s) => s.errorMotor);
-  const { conectar, fijar, cerrar } = usarApp.getState();
+  const panelLateral = usarApp((s) => s.panelLateral);
+  usarApp((s) => s.proyectos);
+  usarApp((s) => s.playlists);
+  usarApp((s) => s.playlistActiva);
+  usarApp((s) => s.ordenGeneral);
+  const { conectar, fijar, cerrar, irA } = usarApp.getState();
+  const cola = usarApp.getState().cola();
+  const indice = proyecto ? cola.findIndex((p) => p.id === proyecto.id) : -1;
+  const anterior = indice > 0 ? cola[indice - 1] : undefined;
+  const siguiente = indice >= 0 ? cola[indice + 1] : undefined;
   usarAtajos();
   useEffect(() => void conectar(), [conectar]);
 
@@ -94,10 +107,19 @@ export function App() {
     contenido = (
       <>
         <Transporte />
-        {vista === "editor" && <Editor />}
-        {vista === "karaoke" && <Karaoke />}
-        {vista === "cancionero" && <Cancionero />}
-        {vista === "partitura" && <Partitura />}
+        <div className="zona-trabajo">
+          {panelLateral && (
+            <aside className="panel-lateral" aria-label="Playlists y proyectos">
+              <Biblioteca compacta />
+            </aside>
+          )}
+          <div className="zona-vista">
+            {vista === "editor" && <Editor />}
+            {vista === "karaoke" && <Karaoke />}
+            {vista === "cancionero" && <Cancionero />}
+            {vista === "partitura" && <Partitura />}
+          </div>
+        </div>
         <CuentaRegresiva />
       </>
     );
@@ -109,7 +131,13 @@ export function App() {
         <div className="marca"><img src="/icono.svg" alt="" />falab</div>
         {proyecto && (
           <>
+            <button className={panelLateral ? "activo" : ""} onClick={() => fijar({ panelLateral: !panelLateral })}
+              title="Mostrar u ocultar playlists y proyectos (B)" aria-label="Panel de playlists" aria-pressed={panelLateral}>☰</button>
+            <button disabled={!anterior} onClick={() => void irA(-1)} aria-label="Canción anterior"
+              title={anterior ? `Anterior: ${anterior.nombre}` : "No hay canción anterior en esta lista"}>⏮</button>
             <NombreProyecto />
+            <button disabled={!siguiente} onClick={() => void irA(1)} aria-label="Canción siguiente"
+              title={siguiente ? `Siguiente: ${siguiente.nombre}` : "No hay canción siguiente en esta lista"}>⏭</button>
             <nav className="pestanas" aria-label="Vistas">
               {VISTAS.map((v) => (
                 <button key={v.id} className={vista === v.id ? "activo" : ""} onClick={() => fijar({ vista: v.id })}>{v.nombre}</button>

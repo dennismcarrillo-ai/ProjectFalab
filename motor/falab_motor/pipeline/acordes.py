@@ -186,17 +186,43 @@ def detectar(
     return {"tonalidad": estimar_tonalidad(total.sum(axis=1)), "acordes": acordes}
 
 
-def limites_de_analisis(mapa_tempo: dict, duracion: float) -> np.ndarray:
-    """Instantes que delimitan los tramos de análisis: los pulsos, o una rejilla de 0,5 s."""
+# Nivel de detalle -> (subdivisiones por pulso, coste de cambiar de acorde).
+# Con más detalle sobreviven los acordes de paso de un solo pulso (o de medio pulso).
+DETALLES = {"normal": (1, 0.18), "alto": (1, 0.09), "maximo": (2, 0.06)}
+
+
+def limites_de_analisis(mapa_tempo: dict, duracion: float, subdivisiones: int = 1) -> np.ndarray:
+    """Instantes que delimitan los tramos de análisis: los pulsos (o fracciones), o una rejilla fija."""
     tiempos = [p["t"] for p in mapa_tempo.get("pulsos", [])]
     if len(tiempos) < 4:
-        return np.arange(0.0, max(duracion, 0.5) + 0.5, 0.5)
+        return np.arange(0.0, max(duracion, 0.5) + 0.5, 0.5 / subdivisiones)
     limites = np.array(tiempos)
     if limites[0] > 0.05:
         limites = np.insert(limites, 0, 0.0)
     if limites[-1] < duracion - 0.05:
         limites = np.append(limites, duracion)
+    if subdivisiones > 1:
+        indices = np.arange(len(limites))
+        finos = np.linspace(0, len(limites) - 1, (len(limites) - 1) * subdivisiones + 1)
+        limites = np.interp(finos, indices, limites)
     return limites
+
+
+def tonalidad_inicial(analisis: dict, segundos: float = 30.0) -> dict | None:
+    """Tonalidad de los primeros `segundos`, deducida de los acordes que suenan en ese tramo."""
+    croma = np.zeros(12)
+    for acorde in analisis.get("acordes", []):
+        if acorde["inicio"] >= segundos:
+            break
+        peso = min(acorde["fin"], segundos) - acorde["inicio"]
+        for intervalo in CALIDADES[acorde["calidad"]][0]:
+            croma[(acorde["raiz"] + intervalo) % 12] += peso
+        croma[acorde["raiz"]] += peso  # la fundamental pesa doble
+    if croma.sum() <= 0:
+        return None
+    tonalidad = estimar_tonalidad(croma)
+    nombre = f"{nombre_nota(tonalidad['tonica'], bemoles=tonalidad['bemoles'])} {tonalidad['modo']}"
+    return {**tonalidad, "nombre": nombre}
 
 
 def con_nombres(analisis: dict, cifrado: str = "estandar", transponer: int = 0) -> dict:

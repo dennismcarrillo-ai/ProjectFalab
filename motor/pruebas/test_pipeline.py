@@ -92,3 +92,32 @@ def test_acordes_desde_audio_sintetico():
                                  acordes.croma_desde_audio(bajo, fs, limites))
     nombres = [a["nombre"] for a in acordes.con_nombres(resultado)["acordes"]]
     assert nombres[:4] == ["C", "Am", "F", "G7"]
+
+
+def test_mas_detalle_recupera_los_acordes_de_paso():
+    # C (3 pulsos) – G/B de paso (1 pulso) – Am (4 pulsos) – F (4 pulsos)
+    pulso = 0.5
+    mapa = {"pulsos": [{"t": i * pulso} for i in range(13)]}
+    tramos = [(0, 3, [60, 64, 67], 36), (3, 4, [59, 62, 67], 35), (4, 8, [57, 60, 64], 33), (8, 12, [53, 57, 60], 29)]
+    armonia, bajo = [], []
+    for a, b, tonos, grave in tramos:
+        # Como en una grabación real, el acorde de paso suena flojo y el anterior sigue resonando.
+        de_paso = b - a == 1
+        armonia += [{"inicio": a * pulso, "fin": (b + (0 if de_paso else 0.9)) * pulso, "tono": t,
+                     "velocidad": 45 if de_paso else 100} for t in tonos]
+        bajo.append({"inicio": a * pulso, "fin": b * pulso, "tono": grave, "velocidad": 50 if de_paso else 90})
+
+    def cifrar(detalle):
+        subdivisiones, coste = acordes.DETALLES[detalle]
+        limites = acordes.limites_de_analisis(mapa, 12 * pulso, subdivisiones)
+        return acordes.detectar(limites, acordes.croma_desde_notas(armonia, limites),
+                                acordes.croma_desde_notas(bajo, limites), coste_cambio=coste)["acordes"]
+
+    assert [a["raiz"] for a in cifrar("normal")] == [0, 9, 5]       # C, Am, F: el de paso se pierde
+    for detalle in ("alto", "maximo"):
+        detectados = cifrar(detalle)
+        assert len(detectados) == 4, detalle
+        de_paso = detectados[1]
+        assert (de_paso["inicio"], de_paso["fin"]) == (1.5, 2.0)     # justo el pulso de paso…
+        assert de_paso["bajo"] == 11                                   # …con el Si en el bajo
+    assert len(acordes.limites_de_analisis(mapa, 6.0, 2)) == 25

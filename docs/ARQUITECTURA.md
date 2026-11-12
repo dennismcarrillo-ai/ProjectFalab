@@ -27,6 +27,18 @@ sabe hacer:
   ~/Falab/proyectos/<id>/             Google Drive: falab_projects/
 ```
 
+## Dos capas
+
+- **Capa 1 · Gestión** (`Biblioteca.tsx`, `biblioteca.py`, `paquete.py`, `drive.py`): proyectos,
+  playlists, importación/exportación y sincronización. Las playlists son listas de identificadores
+  en `~/Falab/config/biblioteca.json`; no duplican audio.
+- **Capa 2 · Editor y directo** (`Editor.tsx`, `vistas/`, `audio/`): mezcla, edición, karaoke,
+  cancionero y partitura.
+
+Drive es siempre una **copia**: los proyectos viven y se reproducen desde el disco local. Con el
+guardado automático, cada cambio entra en una cola persistente que un hilo en segundo plano sube
+cuando hay conexión. Una caída de internet no puede cortar la música.
+
 ## Decisiones tecnológicas
 
 | Decisión | Por qué |

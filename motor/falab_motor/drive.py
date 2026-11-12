@@ -31,8 +31,14 @@ def _ruta_token() -> Path:
 
 
 def estado() -> dict:
+    from . import biblioteca
+
+    datos = biblioteca.cargar()
     return {"configurado": _ruta_cliente().exists(), "conectado": _ruta_token().exists(),
-            "rutaCredenciales": str(_ruta_cliente())}
+            "rutaCredenciales": str(_ruta_cliente()),
+            "automatico": bool(datos["ajustes"].get("driveAutomatico")),
+            "pendientes": sorted(datos["pendientesDrive"]),
+            "ultimoError": _sincronizador["error"], "ultimaSincronizacion": _sincronizador["ultima"]}
 
 
 def conectar() -> dict:
@@ -225,3 +231,80 @@ def descargar_proyecto(id_proyecto: str, trabajo: Trabajo) -> dict:
         if not picos.exists():
             medios.calcular_picos(local / fuente["archivo"], picos)
     return {"archivosDescargados": descargados, "id": id_proyecto}
+
+
+# ---------------------------------------------------------- guardado automático en Drive
+#
+# Los proyectos SIEMPRE viven en el disco local y se reproducen desde ahí: Drive es una copia.
+# Con el guardado automático activo, cada cambio se anota en una cola persistente y un hilo en
+# segundo plano lo sube cuando hay conexión. Si internet falla, la cola espera y reintenta; la
+# reproducción y la edición nunca dependen de la red.
+
+ESPERA_TRAS_EDITAR = 20.0   # segundos sin cambios antes de subir (no subir a media edición)
+PAUSA_DEL_HILO = 10.0
+_sincronizador: dict = {"error": None, "ultima": None, "hilo": None}
+
+
+def anotar_cambio(id_proyecto: str) -> None:
+    """Marca un proyecto como pendiente de subir (solo si el guardado automático está activo)."""
+    import time
+
+    from . import biblioteca
+
+    datos = biblioteca.cargar()
+    if not datos["ajustes"].get("driveAutomatico") or not _ruta_token().exists():
+        return
+    datos["pendientesDrive"][id_proyecto] = time.time()
+    biblioteca.guardar(datos)
+
+
+def sincronizar_pendientes(ahora: float | None = None) -> int:
+    """Sube los proyectos pendientes que llevan un rato sin cambios. Devuelve cuántos subió."""
+    import time
+    from datetime import datetime, timezone
+
+    from . import biblioteca
+
+    ahora = time.time() if ahora is None else ahora
+    datos = biblioteca.cargar()
+    if not datos["ajustes"].get("driveAutomatico") or not _ruta_token().exists():
+        return 0
+    subidos = 0
+    for id_proyecto, marca in list(datos["pendientesDrive"].items()):
+        if ahora - marca < ESPERA_TRAS_EDITAR:
+            continue
+        try:
+            if modelo.carpeta(id_proyecto).exists():
+                subir_proyecto(id_proyecto, Trabajo(id="auto", tipo="drive-subir"))
+            subidos += 1
+        except Exception as error:  # noqa: BLE001 - sin red, token caducado…: se reintenta luego
+            _sincronizador["error"] = str(error) or error.__class__.__name__
+            return subidos
+        # Solo se quita de la cola si no volvió a cambiar mientras se subía.
+        actual = biblioteca.cargar()
+        if actual["pendientesDrive"].get(id_proyecto) == marca:
+            actual["pendientesDrive"].pop(id_proyecto, None)
+            biblioteca.guardar(actual)
+        _sincronizador["error"] = None
+        _sincronizador["ultima"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return subidos
+
+
+def arrancar_sincronizador() -> None:
+    """Lanza (una sola vez) el hilo que vacía la cola de subidas en segundo plano."""
+    import threading
+    import time
+
+    if _sincronizador["hilo"] is not None:
+        return
+
+    def bucle() -> None:
+        while True:
+            time.sleep(PAUSA_DEL_HILO)
+            try:
+                sincronizar_pendientes()
+            except Exception as error:  # noqa: BLE001 - el hilo no debe morir nunca
+                _sincronizador["error"] = str(error)
+
+    _sincronizador["hilo"] = threading.Thread(target=bucle, name="falab-drive", daemon=True)
+    _sincronizador["hilo"].start()

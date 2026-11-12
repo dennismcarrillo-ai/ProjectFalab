@@ -6,8 +6,10 @@ import {
 } from "../edicion/operaciones";
 import { motor, seguirTrabajo, type OpcionesImportar, type PeticionExportar } from "../servicios/motor";
 import type {
-  Analisis, Cifrado, Clip, Ecualizador, Pista, Portapapeles, Proyecto, ResumenProyecto, Salud, Trabajo,
+  Analisis, Cifrado, Clip, DetalleAcordes, Ecualizador, OrdenPlaylist, Pista, Playlist, Portapapeles, Proyecto,
+  ResumenProyecto, Salud, Trabajo,
 } from "../tipos";
+import { desplazar, ordenar } from "../util/biblioteca";
 
 export type Vista = "editor" | "karaoke" | "cancionero" | "partitura";
 export type Dialogo = null | "exportar" | "drive";
@@ -28,6 +30,13 @@ interface EstadoApp {
   salud: Salud | null;
   errorMotor: string | null;
   proyectos: ResumenProyecto[];
+  playlists: Playlist[];
+  /** Playlist en la que se está trabajando (null = todos los proyectos). */
+  playlistActiva: string | null;
+  /** Orden de la vista «Todos los proyectos». */
+  ordenGeneral: OrdenPlaylist;
+  panelLateral: boolean;
+  driveAutomatico: boolean;
   proyecto: Proyecto | null;
   analisis: Analisis | null;
   cifrado: Cifrado;
@@ -46,7 +55,7 @@ interface EstadoApp {
   bucle: boolean;
   guardado: "guardado" | "pendiente" | "guardando" | "error";
   trabajo: (Trabajo & { titulo: string }) | null;
-  aviso: { texto: string; tipo: "info" | "error"; archivos?: string[] } | null;
+  aviso: { texto: string; tipo: "info" | "error"; archivos?: string[]; idProyecto?: string } | null;
 
   conectar(): Promise<void>;
   refrescarProyectos(): Promise<void>;
@@ -59,7 +68,23 @@ interface EstadoApp {
   ejecutar(titulo: string, lanzar: () => Promise<Trabajo>): Promise<Trabajo | null>;
   cancelarTrabajo(): void;
 
-  fijar(parcial: Partial<Pick<EstadoApp, "vista" | "dialogo" | "zoom" | "iman" | "aviso" | "pistaActiva">>): void;
+  fijar(parcial: Partial<Pick<EstadoApp,
+    "vista" | "dialogo" | "zoom" | "iman" | "aviso" | "pistaActiva" | "playlistActiva" | "ordenGeneral" | "panelLateral">>): void;
+
+  // Biblioteca
+  crearPlaylist(nombre: string): Promise<void>;
+  cambiarPlaylist(id: string, parcial: Partial<Pick<Playlist, "nombre" | "orden">>): Promise<void>;
+  eliminarPlaylist(id: string): Promise<void>;
+  alternarEnPlaylist(idPlaylist: string, idProyecto: string): Promise<void>;
+  moverEnPlaylist(idPlaylist: string, idProyecto: string, delta: number): Promise<void>;
+  /** Proyectos de la playlist activa en su orden: la «cola» de Siguiente/Anterior. */
+  cola(): ResumenProyecto[];
+  irA(delta: number): Promise<void>;
+  exportarPaquete(id: string, destino?: string): Promise<void>;
+  importarPaquete(ruta: string): Promise<void>;
+  fijarDriveAutomatico(activo: boolean): Promise<void>;
+  guardarLetras(lineas: { inicio: number; texto: string }[]): Promise<void>;
+  recalcularAcordes(detalle: DetalleAcordes): Promise<void>;
   fijarCifrado(cifrado: Cifrado): Promise<void>;
   seleccionar(clips: string[], pistaId: string | null): void;
   fijarRango(rango: { inicio: number; fin: number } | null): void;
@@ -126,6 +151,17 @@ export const usarApp = create<EstadoApp>((set, get) => {
     motorAudio.fijarPulsos(analisis.mapaTempo.pulsos);
   };
 
+  /** Guarda las playlists en el motor; si falla, se recupera el estado real. */
+  const fijarPlaylists = async (playlists: Playlist[]): Promise<void> => {
+    set({ playlists }); // optimista: la lista responde al instante
+    try {
+      set({ playlists: (await motor.guardarPlaylists(playlists)).playlists });
+    } catch (error) {
+      set({ playlists: (await motor.biblioteca()).playlists,
+        aviso: { texto: `No se pudo guardar la playlist: ${(error as Error).message}`, tipo: "error" } });
+    }
+  };
+
   const pistaDeTrabajo = (): Pista | undefined => {
     const { proyecto, pistaActiva, clipsSeleccionados } = get();
     if (!proyecto) return undefined;
@@ -140,6 +176,11 @@ export const usarApp = create<EstadoApp>((set, get) => {
     salud: null,
     errorMotor: null,
     proyectos: [],
+    playlists: [],
+    playlistActiva: null,
+    ordenGeneral: "manual",
+    panelLateral: false,
+    driveAutomatico: false,
     proyecto: null,
     analisis: null,
     cifrado: "estandar",
@@ -163,7 +204,11 @@ export const usarApp = create<EstadoApp>((set, get) => {
       for (let intento = 0; intento < 40; intento++) {
         try {
           const salud = await motor.salud();
-          set({ salud, errorMotor: null, proyectos: await motor.proyectos() });
+          const biblioteca = await motor.biblioteca();
+          set({
+            salud, errorMotor: null, proyectos: await motor.proyectos(),
+            playlists: biblioteca.playlists, driveAutomatico: biblioteca.ajustes.driveAutomatico,
+          });
           return;
         } catch (error) {
           if (intento === 39) set({ errorMotor: (error as Error).message || String(error) });
@@ -173,13 +218,16 @@ export const usarApp = create<EstadoApp>((set, get) => {
     },
 
     async refrescarProyectos() {
-      set({ proyectos: await motor.proyectos() });
+      const [proyectos, biblioteca] = await Promise.all([motor.proyectos(), motor.biblioteca()]);
+      set({ proyectos, playlists: biblioteca.playlists });
     },
 
     async abrir(id) {
       try {
-        const proyecto = await motor.proyecto(id);
+        // Antes de cambiar de canción se guarda lo pendiente de la actual.
         motorAudio.pausar();
+        await guardarAhora();
+        const proyecto = await motor.proyecto(id);
         set({
           proyecto, analisis: null, vista: "editor", clipsSeleccionados: [], pistaActiva: proyecto.pistas[0]?.id ?? null,
           rango: null, pasado: [], futuro: [], bucle: false, guardado: "guardado",
@@ -187,6 +235,7 @@ export const usarApp = create<EstadoApp>((set, get) => {
         motorAudio.actualizar(proyecto);
         motorAudio.fijarBucle(null);
         motorAudio.saltar(0);
+        void get().refrescarProyectos(); // el panel lateral debe incluir lo recién importado
         await cargarAnalisis();
       } catch (error) {
         set({ aviso: { texto: `No se pudo abrir el proyecto: ${(error as Error).message}`, tipo: "error" } });
@@ -222,6 +271,13 @@ export const usarApp = create<EstadoApp>((set, get) => {
     },
 
     async importar(origen, opciones) {
+      const nombre = typeof origen === "string" ? origen : origen.name;
+      if (nombre.toLowerCase().endsWith(".falab")) {
+        if (typeof origen === "string") return get().importarPaquete(origen);
+        const paquete = await get().ejecutar("Importando el proyecto", () => motor.importarArchivo(origen, opciones));
+        if (paquete) await get().refrescarProyectos();
+        return;
+      }
       const final = await get().ejecutar("Analizando la canción", () =>
         typeof origen === "string" ? motor.importarRuta(origen, opciones) : motor.importarArchivo(origen, opciones),
       );
@@ -248,6 +304,80 @@ export const usarApp = create<EstadoApp>((set, get) => {
     },
 
     fijar: (parcial) => set(parcial),
+
+    async crearPlaylist(nombre) {
+      await fijarPlaylists([...get().playlists, { id: "", nombre, orden: "manual", proyectos: [] }]);
+      const creada = get().playlists[get().playlists.length - 1];
+      if (creada) set({ playlistActiva: creada.id });
+    },
+
+    cambiarPlaylist: (id, parcial) =>
+      fijarPlaylists(get().playlists.map((l) => (l.id === id ? { ...l, ...parcial } : l))),
+
+    async eliminarPlaylist(id) {
+      if (get().playlistActiva === id) set({ playlistActiva: null });
+      await fijarPlaylists(get().playlists.filter((l) => l.id !== id));
+    },
+
+    alternarEnPlaylist: (idPlaylist, idProyecto) =>
+      fijarPlaylists(get().playlists.map((l) => l.id !== idPlaylist ? l : {
+        ...l,
+        proyectos: l.proyectos.includes(idProyecto) ? l.proyectos.filter((p) => p !== idProyecto) : [...l.proyectos, idProyecto],
+      })),
+
+    moverEnPlaylist: (idPlaylist, idProyecto, delta) =>
+      fijarPlaylists(get().playlists.map((l) =>
+        l.id === idPlaylist ? { ...l, proyectos: desplazar(l.proyectos, idProyecto, delta) } : l)),
+
+    cola() {
+      const { proyectos, playlists, playlistActiva, ordenGeneral } = get();
+      return ordenar(proyectos, playlists.find((l) => l.id === playlistActiva) ?? null, ordenGeneral);
+    },
+
+    async irA(delta) {
+      const actual = get().proyecto;
+      const cola = get().cola();
+      if (!actual || cola.length === 0) return;
+      const destino = cola[cola.findIndex((p) => p.id === actual.id) + delta];
+      if (destino) await get().abrir(destino.id);
+    },
+
+    async exportarPaquete(id, destino) {
+      if (get().proyecto?.id === id) await guardarAhora();
+      const final = await get().ejecutar("Exportando el proyecto", () => motor.empaquetar(id, destino));
+      if (final) {
+        set({ aviso: { texto: "Proyecto exportado. Se puede importar en otro equipo con falab.", tipo: "info",
+          archivos: final.resultado.archivos, idProyecto: id } });
+      }
+    },
+
+    async importarPaquete(ruta) {
+      const final = await get().ejecutar("Importando el proyecto", () => motor.importarPaquete(ruta));
+      if (final) await get().refrescarProyectos();
+    },
+
+    async fijarDriveAutomatico(activo) {
+      await motor.guardarAjustes({ driveAutomatico: activo });
+      set({ driveAutomatico: activo });
+    },
+
+    async guardarLetras(lineas) {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      try {
+        await motor.editarLetras(proyecto.id, lineas);
+        await cargarAnalisis();
+      } catch (error) {
+        set({ aviso: { texto: `No se pudo guardar la letra: ${(error as Error).message}`, tipo: "error" } });
+      }
+    },
+
+    async recalcularAcordes(detalle) {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      const final = await get().ejecutar("Cifrando acordes", () => motor.recalcularAcordes(proyecto.id, detalle));
+      if (final) await cargarAnalisis();
+    },
 
     async fijarCifrado(cifrado) {
       set({ cifrado });

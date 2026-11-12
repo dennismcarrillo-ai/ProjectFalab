@@ -110,6 +110,34 @@ def cargar(id_proyecto: str) -> dict:
     return json.loads(ruta.read_text(encoding="utf-8"))
 
 
+def _peso(ruta_carpeta: Path) -> tuple[int, int]:
+    """(bytes totales, número de archivos) de la carpeta de un proyecto."""
+    total, cuenta = 0, 0
+    for ruta in ruta_carpeta.rglob("*"):
+        if ruta.is_file():
+            total += ruta.stat().st_size
+            cuenta += 1
+    return total, cuenta
+
+
+def resumen(p: dict) -> dict:
+    """Ficha del proyecto para la biblioteca: tamaño en disco, tempo y tonalidad."""
+    from .pipeline import acordes
+
+    peso, archivos = _peso(carpeta(p["id"]))
+    analisis = leer_analisis(p["id"], "acordes", {}) or {}
+    tonalidad = acordes.con_nombres(analisis)["tonalidad"] if analisis.get("acordes") else None
+    # En un popurrí la tonalidad global no significa nada: para ordenar se usa la del arranque.
+    inicial = acordes.tonalidad_inicial(analisis) if analisis.get("acordes") else None
+    return {
+        "id": p["id"], "nombre": p["nombre"], "modificado": p["modificado"],
+        "duracion": p.get("duracion", 0.0), "bpm": p.get("bpm"),
+        "pistas": len(p.get("pistas", [])), "peso": peso, "archivos": archivos,
+        "tieneVideo": bool(p.get("medioOriginal", {}).get("tieneVideo")),
+        "tonalidad": tonalidad, "tonalidadInicial": inicial,
+    }
+
+
 def listar() -> list[dict]:
     """Resumen de todos los proyectos locales, del más reciente al más antiguo."""
     resumenes = []
@@ -117,14 +145,9 @@ def listar() -> list[dict]:
         return resumenes
     for ruta in config.DIR_PROYECTOS.glob("*/proyecto.json"):
         try:
-            p = json.loads(ruta.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            resumenes.append(resumen(json.loads(ruta.read_text(encoding="utf-8"))))
+        except (OSError, json.JSONDecodeError, KeyError):
             continue
-        resumenes.append({
-            "id": p["id"], "nombre": p["nombre"], "modificado": p["modificado"],
-            "duracion": p.get("duracion", 0.0), "bpm": p.get("bpm"),
-            "pistas": len(p.get("pistas", [])),
-        })
     return sorted(resumenes, key=lambda r: r["modificado"], reverse=True)
 
 
