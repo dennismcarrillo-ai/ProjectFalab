@@ -129,3 +129,34 @@ def test_cancionero_coloca_el_acorde_sobre_su_palabra():
 def test_tablatura_sin_notas_avisa():
     with pytest.raises(ValueError):
         tablatura.a_texto([], MAPA, "guitarra", "x")
+
+
+def test_cancionero_no_pierde_acordes():
+    """Los acordes entre líneas, varios sobre una palabra y los de paso deben aparecer todos."""
+    letras = {"segmentos": [
+        {"inicio": 2.0, "fin": 5.0, "texto": "uno dos", "palabras": [
+            {"inicio": 2.0, "fin": 3.0, "texto": "uno"}, {"inicio": 3.2, "fin": 5.0, "texto": "dosssssss"}]},
+        {"inicio": 7.0, "fin": 9.0, "texto": "tres", "palabras": [{"inicio": 7.0, "fin": 9.0, "texto": "tres"}]},
+        {"inicio": 20.0, "fin": 22.0, "texto": "fin", "palabras": [{"inicio": 20.0, "fin": 22.0, "texto": "fin"}]}]}
+    nombres = ["C", "G/B", "Am", "Em", "F", "G", "C", "Dm", "G7", "C"]
+    tiempos = [0.0, 1.0, 2.0, 3.6, 4.4, 5.5, 6.2, 7.0, 9.5, 20.0, 23.0]
+    acordes = [{"inicio": a, "fin": b, "nombre": n} for n, a, b in zip(nombres, tiempos, tiempos[1:])]
+    lineas = cancionero.construir(letras, acordes, 23.0)
+
+    primera, segunda, instrumental, ultima = lineas
+    # Entrada corta (C, G/B antes de cantar), dos acordes dentro de «dosssssss» y dos en la pausa.
+    assert [m["nombre"] for m in primera["acordes"]] == ["C", "G/B", "Am", "Em", "F", "G", "C"]
+    columnas = [m["columna"] for m in primera["acordes"]]
+    assert columnas == sorted(columnas)
+    em, fa = primera["acordes"][3], primera["acordes"][4]
+    assert 4 <= em["columna"] < fa["columna"] < len(primera["texto"])      # cada uno sobre su sílaba
+    assert all(m["columna"] >= len(primera["texto"]) for m in primera["acordes"][5:])  # pausa: tras el texto
+    assert [m["nombre"] for m in segunda["acordes"]] == ["Dm"]
+    assert instrumental["tipo"] == "instrumental" and instrumental["texto"] == "| G7 |"
+    assert [m["nombre"] for m in ultima["acordes"]] == ["C"]
+
+    # Ningún cambio de acorde se queda fuera del cancionero.
+    escritos = sum(len(l["acordes"]) for l in lineas) + instrumental["texto"].count("|") - 1
+    assert escritos == len(acordes)
+    texto = cancionero.a_texto("T", "Do mayor", 100, lineas).splitlines()
+    assert texto[3] == "C G/B Am Em F G C" or texto[3].startswith("C G/B Am")

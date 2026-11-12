@@ -6,33 +6,69 @@ from pathlib import Path
 HUECO_INSTRUMENTAL = 4.0  # segundos sin letra a partir de los cuales se escribe una línea de acordes
 
 
-def _linea_instrumental(acordes: list[dict], inicio: float, fin: float) -> dict | None:
-    dentro = [a for a in acordes if a["inicio"] < fin and a["fin"] > inicio + 0.05]
-    if not dentro:
-        return None
+TOLERANCIA = 0.15  # los límites de acordes (pulsos) y de palabras nunca coinciden al milisegundo
+
+
+def _linea_instrumental(acordes: list[dict], inicio: float, fin: float, ya_escrito: str | None = None) -> dict | None:
+    """Línea «| C | Am | F |» con los acordes del tramo sin letra [inicio, fin)."""
     nombres = []
-    for acorde in dentro:
+    for acorde in acordes:
+        if acorde["fin"] <= inicio + TOLERANCIA or acorde["inicio"] >= fin - TOLERANCIA:
+            continue
+        if not nombres and acorde["inicio"] < inicio - TOLERANCIA and acorde["nombre"] == ya_escrito:
+            continue  # venía sonando y ya figura en la línea anterior
         if not nombres or nombres[-1] != acorde["nombre"]:
             nombres.append(acorde["nombre"])
+    if not nombres:
+        return None
     return {"tipo": "instrumental", "inicio": inicio, "fin": fin,
-            "texto": "| " + " | ".join(nombres) + " |", "acordes": []}
+            "texto": "| " + " | ".join(nombres) + " |", "acordes": [], "ultimo": nombres[-1]}
+
+
+def _columna(t: float, columnas: list[tuple[int, float, float, int]], largo: int) -> int:
+    """Carácter de la línea sobre el que cae el instante `t`.
+
+    Dentro de una palabra larga el acorde avanza en proporción al tiempo (cae sobre su sílaba);
+    entre dos palabras se coloca sobre la siguiente; después de la última, tras el texto.
+    """
+    for i, (col, ini, fin, letras) in enumerate(columnas):
+        siguiente = columnas[i + 1][1] if i + 1 < len(columnas) else None
+        if t < ini + 0.08:
+            return col
+        if t < fin:
+            return col + min(letras - 1, int(letras * (t - ini) / max(fin - ini, 1e-6)))
+        if siguiente is not None and t < siguiente - 0.08:
+            return columnas[i + 1][0]
+    return largo + 2
 
 
 def construir(letras: dict, acordes: list[dict], duracion: float) -> list[dict]:
-    """Devuelve las líneas del cancionero.
+    """Devuelve las líneas del cancionero, sin perder ningún cambio de acorde.
 
     Cada línea: {tipo: 'letra'|'instrumental', inicio, fin, texto, acordes:[{columna, nombre, t}]}
     donde `columna` es el índice del carácter de `texto` sobre el que se escribe el acorde.
+    Los acordes que suenan en la pausa entre dos líneas se escriben al final de la primera
+    (pasado el texto); si la pausa es larga, van en una línea instrumental propia.
     """
+    segmentos = letras.get("segmentos", [])
     lineas: list[dict] = []
-    cursor = 0.0
+    cursor = 0.0            # hasta dónde están ya escritos los acordes
     ultimo_nombre = None
-    for segmento in letras.get("segmentos", []):
+    for indice, segmento in enumerate(segmentos):
         if segmento["inicio"] - cursor >= HUECO_INSTRUMENTAL:
-            instrumental = _linea_instrumental(acordes, cursor, segmento["inicio"])
+            instrumental = _linea_instrumental(acordes, cursor, segmento["inicio"], ultimo_nombre)
             if instrumental:
+                ultimo_nombre = instrumental.pop("ultimo")
                 lineas.append(instrumental)
-                ultimo_nombre = None
+            cursor = segmento["inicio"]
+        # La línea se hace cargo de los acordes hasta que empiece la siguiente (si está cerca).
+        if indice + 1 < len(segmentos):
+            proximo = segmentos[indice + 1]["inicio"]
+        else:
+            proximo = duracion
+        limite = proximo if proximo - segmento["fin"] < HUECO_INSTRUMENTAL else segmento["fin"]
+        limite = max(limite, segmento["fin"])
+
         # Se reconstruye el texto palabra a palabra para conocer la columna de cada una.
         palabras = segmento.get("palabras") or [
             {"inicio": segmento["inicio"], "fin": segmento["fin"], "texto": segmento["texto"]}
@@ -41,34 +77,31 @@ def construir(letras: dict, acordes: list[dict], duracion: float) -> list[dict]:
         for palabra in palabras:
             if texto:
                 texto += " "
-            columnas.append((len(texto), palabra["inicio"], palabra["fin"]))
+            columnas.append((len(texto), palabra["inicio"], palabra["fin"], len(palabra["texto"])))
             texto += palabra["texto"]
 
-        marcas = []
+        marcas: list[dict] = []
+        desde = min(cursor, segmento["inicio"])
         for acorde in acordes:
-            if acorde["fin"] <= segmento["inicio"] or acorde["inicio"] >= segmento["fin"]:
+            if acorde["fin"] <= desde + TOLERANCIA or acorde["inicio"] >= limite - TOLERANCIA:
                 continue
-            if acorde["nombre"] == ultimo_nombre and acorde["inicio"] < segmento["inicio"]:
-                continue  # el acorde ya venía sonando y ya está escrito en la línea anterior
-            columna = 0
-            for col, ini, fin in columnas:
-                if ini <= acorde["inicio"] + 0.08:
-                    columna = col
-                else:
-                    break
-            if acorde["inicio"] <= segmento["inicio"]:
-                columna = 0
-            if marcas and marcas[-1]["columna"] == columna:
-                marcas[-1] = {"columna": columna, "nombre": acorde["nombre"], "t": acorde["inicio"]}
-            else:
-                marcas.append({"columna": columna, "nombre": acorde["nombre"], "t": acorde["inicio"]})
+            ya_sonaba = acorde["inicio"] <= segmento["inicio"] + 0.08
+            if ya_sonaba and acorde["nombre"] == ultimo_nombre and acorde["inicio"] < desde + TOLERANCIA:
+                continue  # sigue sonando el acorde ya escrito en la línea anterior
+            columna = 0 if ya_sonaba else _columna(acorde["inicio"], columnas, len(texto))
+            if marcas:
+                columna = max(columna, marcas[-1]["columna"])  # nunca retroceder: se leen en orden
+                if marcas[-1]["nombre"] == acorde["nombre"]:
+                    continue
+            marcas.append({"columna": columna, "nombre": acorde["nombre"], "t": acorde["inicio"]})
             ultimo_nombre = acorde["nombre"]
         lineas.append({"tipo": "letra", "inicio": segmento["inicio"], "fin": segmento["fin"],
                        "texto": texto, "acordes": marcas})
-        cursor = segmento["fin"]
+        cursor = limite
     if duracion - cursor >= HUECO_INSTRUMENTAL or not lineas:
-        final = _linea_instrumental(acordes, cursor, duracion)
+        final = _linea_instrumental(acordes, cursor, duracion, ultimo_nombre)
         if final:
+            final.pop("ultimo")
             lineas.append(final)
     return lineas
 
