@@ -88,5 +88,11 @@ def fijar_ajustes(parcial: dict) -> dict:
         datos = cargar()
         if "driveAutomatico" in parcial:
             datos["ajustes"]["driveAutomatico"] = bool(parcial["driveAutomatico"])
+        if "pedal" in parcial:
+            # Asignaciones del pedal: {acción: {tipo: 'tecla'|'midi', ...}}. Las interpreta la interfaz.
+            pedal = parcial["pedal"]
+            if not isinstance(pedal, dict) or len(json.dumps(pedal)) > 4000:
+                raise ValueError("Asignación de pedal no válida.")
+            datos["ajustes"]["pedal"] = pedal
         guardar(datos)
         return datos["ajustes"]

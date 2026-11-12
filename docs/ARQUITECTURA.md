@@ -39,6 +39,22 @@ Drive es siempre una **copia**: los proyectos viven y se reproducen desde el dis
 guardado automático, cada cambio entra en una cola persistente que un hilo en segundo plano sube
 cuando hay conexión. Una caída de internet no puede cortar la música.
 
+## Show continuo sin cortes
+
+El procesador de audio admite una canción «encolada». Como lo que se lee va por delante de lo
+que se oye, el cambio tiene dos momentos (`procesador.worklet.ts`):
+
+1. La **lectura** llega al final de la canción actual y, en esa misma muestra, empieza a leer la
+   siguiente. Sus primeros fragmentos ya están en memoria: se precargan 25 s antes del final.
+2. Cuando el **oyente** llega a ese punto, el cursor, el metrónomo y la interfaz pasan a la nueva
+   canción y el mezclador aplica sus faders y EQ.
+
+Las fuentes de audio se identifican como `proyecto/fuente`, de modo que dos canciones pueden
+convivir en el reproductor aunque ambas tengan «voz» o «bajo».
+
+El pedal MIDI se lee en el motor (python-rtmidi) porque el WebView de macOS no tiene Web MIDI; la
+interfaz recoge los mensajes con una petición que espera hasta que llega uno.
+
 ## Decisiones tecnológicas
 
 | Decisión | Por qué |

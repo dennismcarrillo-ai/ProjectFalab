@@ -168,4 +168,61 @@ describe("procesador de audio", () => {
     expect(rms(a)).toBeGreaterThan(0.1);
     expect(Array.from(a.subarray(30000, 30100))).toEqual(Array.from(b.subarray(30000, 30100)));
   });
+
+  it("show continuo: empalma con la canción siguiente en la muestra exacta y avisa del cambio", () => {
+    const { p, enviar, posicion } = crear(440, 1); // canción actual: 44100 frames
+    // Fuente de la canción siguiente: la rampa vale 20000 + frame, para distinguirla.
+    const framesB = FS * 2;
+    const datos = new Int16Array(framesB * 2);
+    for (let f = 0; f < framesB; f++) datos[f * 2 + 1] = 20000 + (f % 10000);
+    enviar({ tipo: "fragmento", fuenteId: "b", indice: 0, datos });
+    const clipB = { fuenteId: "b", inicio: 0, desplazamiento: 0, duracion: framesB, ganancia: 1, fundidoEntrada: 0, fundidoSalida: 0 };
+    enviar({ tipo: "encolar", montaje: {
+      pistas: [{ tono: 0, clips: [clipB] }, { tono: 0, clips: [clipB] }], fin: framesB, fuentes: { b: framesB },
+      velocidad: 1, tono: 0, pulsos: new Float64Array([4410]), fuertes: new Uint8Array([1]) } });
+    enviar(parametros({ metronomo: true }));
+    enviar(reproducir(40000));
+    const bloques = 60; // 7680 frames: cruza el final (frame 44100) en el frame 4100 de la salida
+    const salidas = Array.from({ length: bloques }, () => Array.from({ length: MAX_PISTAS + 1 }, () => [new Float32Array(128), new Float32Array(128)]));
+    for (const s of salidas) p.process([], s);
+    const unir = (pista: number) => { const t = new Float32Array(bloques * 128); salidas.forEach((s, i) => t.set(s[pista][1], i * 128)); return t; };
+    const rampa = unir(0), segunda = unir(1), clics = unir(MAX_PISTAS);
+    const valor = (x: number) => Math.round(x * 32768);
+    expect(valor(rampa[3900])).toBe(43900 % 30000);            // todavía la canción actual
+    expect(valor(rampa[4100 + 300])).toBe(20300);                // ya la siguiente, sin hueco ni desfase
+    expect(valor(rampa[4100 + 5])).toBeGreaterThan(0);           // (fundido anti-clic de 3 ms al entrar)
+    expect(valor(segunda[4100 + 300])).toBe(20300);              // la pista nueva arranca alineada
+    expect(Math.abs(valor(segunda[4000]))).toBe(0);
+    expect(p.recibidos.filter((m: MensajeDelProcesador) => m.tipo === "cambio")).toHaveLength(1);
+    expect(p.recibidos.some((m: MensajeDelProcesador) => m.tipo === "fin")).toBe(false);
+    expect(posicion()).toBeLessThan(4000);                       // el cursor ya cuenta en la canción nueva…
+    expect(p.posicion).toBe(40000 + bloques * 128 - FS);         // …y en la muestra exacta
+    // El metrónomo ya sigue los pulsos de la canción nueva (su pulso en 4410 -> salida 8510: fuera) …
+    expect(Math.max(...clics.subarray(4100, 7680).map(Math.abs))).toBe(0);
+    const mas = Array.from({ length: MAX_PISTAS + 1 }, () => [new Float32Array(128), new Float32Array(128)]);
+    for (let i = 0; i < 8; i++) p.process([], mas);
+    expect(Math.max(...mas[MAX_PISTAS][0].map(Math.abs))).toBeGreaterThan(0.2); // … y suena al llegar a él
+  });
+
+  it("show continuo: también cambia de canción con el estirador activo", () => {
+    const { p, enviar, correr } = crear(440, 1);
+    const framesB = FS * 3;
+    const datos = new Int16Array(framesB * 2);
+    for (let f = 0; f < framesB; f++) datos[f * 2] = Math.round(Math.sin((2 * Math.PI * 880 * f) / FS) * 16000);
+    enviar({ tipo: "fragmento", fuenteId: "b", indice: 0, datos });
+    enviar({ tipo: "fragmento", fuenteId: "b", indice: 1, datos: new Int16Array(2) });
+    enviar({ tipo: "encolar", montaje: {
+      pistas: [{ tono: 0, clips: [{ fuenteId: "b", inicio: 0, desplazamiento: 0, duracion: FRAMES_FRAGMENTO, ganancia: 1, fundidoEntrada: 0, fundidoSalida: 0 }] }],
+      fin: FRAMES_FRAGMENTO, fuentes: { b: framesB }, velocidad: 0.5, tono: 0, pulsos: new Float64Array(0), fuertes: new Uint8Array(0) } });
+    enviar(parametros({ velocidad: 0.8 }));
+    enviar(reproducir(20000));
+    const [onda] = correr(700);
+    expect(p.recibidos.filter((m: MensajeDelProcesador) => m.tipo === "cambio")).toHaveLength(1);
+    expect(Math.abs(frecuencia(onda.subarray(60000)) - 880)).toBeLessThan(12);   // suena la canción nueva, afinada
+    const informes = (p.recibidos as MensajeDelProcesador[]).filter((m) => m.tipo === "posicion") as any[];
+    const antes = informes[informes.length - 1].posicion;
+    correr(100);
+    const despues = (p.recibidos as any[]).filter((m) => m.tipo === "posicion").pop().posicion;
+    expect(despues - antes).toBeCloseTo(100 * 128 * 0.5, 0);                       // a la velocidad de la nueva
+  });
 });

@@ -110,6 +110,10 @@ def crear_proyecto(nombre: str = "Demostración falab", vueltas: int = 4) -> dic
     modelo.escribir_analisis(p["id"], "notas", notas_exactas(vueltas))
     modelo.escribir_analisis(p["id"], "acordes", orquestador._acordes({}, stems, mezcla, mapa, p["duracion"]))
     modelo.escribir_analisis(p["id"], "letras", letras)
+    from .pipeline import estructura
+
+    modelo.escribir_analisis(p["id"], "estructura", {
+        "secciones": estructura.detectar(mezcla, stems["voz"], mapa, p["duracion"]), "automatica": True})
     p["avisos"].append("Proyecto de demostración con audio sintético (no ha pasado por Demucs ni Whisper).")
     modelo.guardar(p)
     return p

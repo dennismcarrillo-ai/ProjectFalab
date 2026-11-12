@@ -13,6 +13,7 @@ import { duracionDe, usarApp, usarReproduccion } from "../estado/almacen";
 import type { Clip, Pista, Proyecto, Pulso } from "../tipos";
 import { formatearDb, formatearTiempo } from "../util/formato";
 import { FRAMES_POR_PICO, usarPicos } from "../util/picos";
+import { colorDeSeccion } from "./Directo";
 import { Inspector } from "./Inspector";
 import { PanelEq } from "./PanelEq";
 
@@ -43,6 +44,7 @@ function prepararLienzo(lienzo: HTMLCanvasElement, ancho: number, alto: number):
 function Regla({ ventana, zoom, pulsos, anchoTotal }: { ventana: Ventana; zoom: number; pulsos: Pulso[]; anchoTotal: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const acordes = usarApp((s) => s.analisis?.acordes) ?? [];
+  const secciones = usarApp((s) => s.analisis?.secciones) ?? [];
   const { saltar, fijarRango } = usarApp.getState();
 
   useEffect(() => {
@@ -113,6 +115,14 @@ function Regla({ ventana, zoom, pulsos, anchoTotal }: { ventana: Ventana; zoom: 
     <div className="carril regla" style={{ width: anchoTotal }} onPointerDown={alPulsar}
       onDoubleClick={() => fijarRango(null)} title="Clic: mover el cursor · Arrastrar: marcar un tramo · Doble clic: quitar el tramo">
       <canvas ref={ref} />
+      <div className="secciones-carril">
+        {secciones.filter((s) => s.fin >= t0 && s.inicio <= t1).map((s) => (
+          <span key={s.inicio} className="seccion-marca" title={`${s.nombre}${s.compas ? ` · ${s.compas}/4` : ""}`}
+            style={{ left: s.inicio * zoom, width: Math.max(0, (s.fin - s.inicio) * zoom - 2), background: colorDeSeccion(s.nombre) }}>
+            {s.nombre}{s.compas ? ` · ${s.compas}/4` : ""}
+          </span>
+        ))}
+      </div>
       <div className="acordes-carril">
         {acordes.filter((a) => a.fin >= t0 && a.inicio <= t1).map((a) => (
           <span key={a.inicio} className="acorde-marca"

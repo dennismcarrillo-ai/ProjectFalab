@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Aviso, DialogoDrive, DialogoExportar, Progreso } from "./componentes/Dialogos";
+import { DialogoEstructura, DialogoPedal } from "./componentes/Directo";
 import { Biblioteca } from "./componentes/Biblioteca";
 import { Editor } from "./componentes/Editor";
 import { Inicio } from "./componentes/Inicio";
@@ -40,6 +41,12 @@ function usarAtajos() {
   useEffect(() => {
     const alPulsar = (e: KeyboardEvent) => {
       const app = usarApp.getState();
+      // Un pedal que actúa como teclado: su tecla asignada manda sobre los atajos normales.
+      const campo = (e.target as HTMLElement).tagName === "INPUT" && (e.target as HTMLInputElement).type === "text";
+      if (!campo && !e.metaKey && !e.ctrlKey && (app.aprendiendo || app.proyecto)) {
+        if (app.aprendiendo && e.key === "Escape") { app.aprender(null); return; }
+        if (app.disparar({ tipo: "tecla", codigo: e.code })) { e.preventDefault(); return; }
+      }
       if (!app.proyecto || app.dialogo || app.trabajo) return;
       const objetivo = e.target as HTMLElement;
       if (objetivo.tagName === "INPUT" && (objetivo as HTMLInputElement).type !== "range" && (objetivo as HTMLInputElement).type !== "checkbox") return;
@@ -145,6 +152,7 @@ export function App() {
             </nav>
             <span className="crecer" />
             <span className="estado-guardado">{TEXTO_GUARDADO[guardado]}</span>
+            <button onClick={() => fijar({ dialogo: "pedal" })} title="Asignar un pedal MIDI o de teclado">Pedal</button>
             <button onClick={() => fijar({ dialogo: "drive" })} title="Sincronizar con Google Drive"><IconoNube /> Drive</button>
             <button className="primario" onClick={() => fijar({ dialogo: "exportar" })}><IconoExportar /> Exportar</button>
             <button className="plano" onClick={() => void cerrar()}>Cerrar proyecto</button>
@@ -154,6 +162,8 @@ export function App() {
       {contenido}
       {dialogo === "exportar" && proyecto && <DialogoExportar />}
       {dialogo === "drive" && <DialogoDrive />}
+      {dialogo === "estructura" && proyecto && <DialogoEstructura />}
+      {dialogo === "pedal" && <DialogoPedal />}
       <Progreso />
       <Aviso />
     </div>

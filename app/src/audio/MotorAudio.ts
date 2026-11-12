@@ -13,13 +13,48 @@ import { motor } from "../servicios/motor";
 import type { Proyecto, Pulso } from "../tipos";
 import {
   BITS_FRAGMENTO, FRAMES_FRAGMENTO, FRECUENCIA, MAX_PISTAS,
-  type EstadoTransporte, type MensajeAlProcesador, type MensajeDelProcesador, type PistaProcesador,
+  type EstadoTransporte, type MensajeAlProcesador, type MensajeDelProcesador, type Montaje, type PistaProcesador,
 } from "./protocolo";
 
 /** Segundos de proyecto que se mantienen cargados por delante y por detrás del cursor. */
 const VENTANA_DELANTE = 18;
 const VENTANA_DETRAS = 3;
 const DESCARGAS_SIMULTANEAS = 6;
+/** Segundos antes del final a partir de los cuales se precarga el arranque de la canción siguiente. */
+const ANTELACION_SIGUIENTE = 25;
+
+/**
+ * Identificador de una fuente dentro del procesador. Lleva delante el proyecto porque en el
+ * show continuo conviven dos canciones y ambas tienen una fuente llamada «voz», «bajo»…
+ */
+const rutaDe = (idProyecto: string, idFuente: string): string => `${idProyecto}/${idFuente}`;
+
+/** Convierte un proyecto en el montaje (clips en frames) que entiende el procesador. */
+function montar(proyecto: Proyecto): { pistas: PistaProcesador[]; fin: number; fuentes: Record<string, number> } {
+  const pistas: PistaProcesador[] = proyecto.pistas.slice(0, MAX_PISTAS).map((pista) => ({
+    tono: pista.tono,
+    clips: pista.clips.map((clip) => {
+      const inicio = aFrames(clip.inicio);
+      return {
+        fuenteId: rutaDe(proyecto.id, clip.fuenteId),
+        inicio,
+        desplazamiento: aFrames(clip.desplazamiento),
+        duracion: aFrames(clip.inicio + clip.duracion) - inicio,
+        ganancia: dbALineal(clip.ganancia),
+        fundidoEntrada: aFrames(clip.fundidoEntrada),
+        fundidoSalida: aFrames(clip.fundidoSalida),
+      };
+    }),
+  }));
+  const fin = Math.max(0, ...pistas.flatMap((p) => p.clips.map((c) => c.inicio + c.duracion)));
+  const fuentes = Object.fromEntries(proyecto.fuentes.map((f) => [rutaDe(proyecto.id, f.id), f.frames]));
+  return { pistas, fin, fuentes };
+}
+
+const pulsosAFrames = (pulsos: Pulso[]) => ({
+  frames: new Float64Array(pulsos.map((p) => p.t * FRECUENCIA)),
+  fuertes: new Uint8Array(pulsos.map((p) => (p.pulso === 1 ? 1 : 0))),
+});
 const SUAVIZADO = 0.015;
 
 const dbALineal = (db: number): number => Math.pow(10, db / 20);
@@ -52,6 +87,8 @@ export class MotorAudio {
   private pulsos: Pulso[] = [];
   private bucle: { inicio: number; fin: number } | null = null;
   private firmaMontaje = "";
+  /** Show continuo: canción encolada para sonar al acabar la actual. */
+  private siguiente: { proyecto: Proyecto; pulsos: Pulso[] } | null = null;
 
   /** Fragmentos que ya tiene el procesador y los que están en camino ("fuente:indice"). */
   private cargados = new Set<string>();
@@ -60,6 +97,9 @@ export class MotorAudio {
 
   estado: EstadoReproduccion = { estado: "detenido", posicion: 0, cuenta: 0, esperando: false };
   alCambiar: (estado: EstadoReproduccion) => void = () => {};
+  /** Show continuo: la canción encolada acaba de empezar a sonar. */
+  alCambiarDeCancion: (proyecto: Proyecto, pulsos: Pulso[]) => void = () => {};
+  alTerminar: () => void = () => {};
 
   /** Crea el contexto de audio. Debe llamarse tras un gesto del usuario (política de los navegadores). */
   async iniciar(): Promise<void> {
@@ -101,6 +141,7 @@ export class MotorAudio {
       this.cargados.clear();
       this.actualizar(proyecto);
       this.fijarPulsos(this.pulsos);
+      if (this.siguiente) this.encolar(this.siguiente.proyecto, this.siguiente.pulsos);
     }
   }
 
@@ -120,6 +161,18 @@ export class MotorAudio {
       this.planificarFragmentos();
     } else if (mensaje.tipo === "falta") {
       this.pedir(`${mensaje.fuenteId}:${mensaje.indice}`, true);
+    } else if (mensaje.tipo === "cambio" && this.siguiente) {
+      // El procesador ya está sonando la canción encolada: el mezclador y la interfaz la siguen.
+      const { proyecto, pulsos } = this.siguiente;
+      this.siguiente = null;
+      this.proyecto = proyecto;
+      this.pulsos = pulsos;
+      this.firmaMontaje = JSON.stringify(montar(proyecto).pistas);
+      this.aplicarMezcla(proyecto);
+      this.alCambiarDeCancion(proyecto, pulsos);
+      this.planificarFragmentos();
+    } else if (mensaje.tipo === "fin") {
+      this.alTerminar();
     }
   }
 
@@ -128,22 +181,38 @@ export class MotorAudio {
     const anterior = this.proyecto;
     this.proyecto = proyecto;
     if (anterior && anterior.id !== proyecto.id) {
-      // Otro proyecto: el procesador debe olvidar todos los fragmentos del anterior.
-      for (const fuente of anterior.fuentes) {
-        const indices = [...this.cargados].filter((c) => c.startsWith(fuente.id + ":")).map((c) => Number(c.split(":")[1]));
-        this.enviar({ tipo: "descartar", fuenteId: fuente.id, indices });
-      }
-      this.cargados.clear();
+      // Otro proyecto abierto a mano: se cancela lo encolado y se olvidan los fragmentos ajenos.
+      this.encolar(null, []);
       this.enCurso.clear();
       this.cola = [];
       this.firmaMontaje = "";
       this.bucle = null;
     }
     if (!this.contexto) return;
+    this.aplicarMezcla(proyecto);
+    this.enviarParametros();
+
+    // El montaje solo se reenvía si cambió algo que afecte a QUÉ audio suena y CUÁNDO.
+    const montaje = montar(proyecto);
+    const firma = JSON.stringify(montaje.pistas);
+    if (firma !== this.firmaMontaje) {
+      this.firmaMontaje = firma;
+      this.planificarFragmentos();
+      this.enviar({ tipo: "proyecto", ...montaje });
+    }
+  }
+
+  /** Lleva al grafo de Web Audio los faders, paneos y EQ del proyecto. */
+  private aplicarMezcla(proyecto: Proyecto): void {
+    if (!this.contexto) return;
     const ahora = this.contexto.currentTime;
     const haySolo = proyecto.pistas.some((p) => p.solo);
-    proyecto.pistas.slice(0, MAX_PISTAS).forEach((pista, i) => {
-      const canal = this.canales[i];
+    this.canales.forEach((canal, i) => {
+      const pista = proyecto.pistas[i];
+      if (!pista) {
+        canal.fader.gain.setTargetAtTime(0, ahora, SUAVIZADO);
+        return;
+      }
       const audible = haySolo ? pista.solo : !pista.silencio;
       canal.fader.gain.setTargetAtTime(audible ? dbALineal(pista.volumen) : 0, ahora, SUAVIZADO);
       canal.paneo.pan.setTargetAtTime(pista.paneo, ahora, SUAVIZADO);
@@ -157,32 +226,25 @@ export class MotorAudio {
     });
     this.maestro!.gain.setTargetAtTime(dbALineal(proyecto.volumenMaestro), ahora, SUAVIZADO);
     this.clics!.gain.setTargetAtTime(dbALineal(proyecto.metronomo.volumen), ahora, SUAVIZADO);
-    this.enviarParametros();
+  }
 
-    // El montaje solo se reenvía si cambió algo que afecte a QUÉ audio suena y CUÁNDO.
-    const pistas: PistaProcesador[] = proyecto.pistas.slice(0, MAX_PISTAS).map((pista) => ({
-      tono: pista.tono,
-      clips: pista.clips.map((clip) => {
-        const inicio = aFrames(clip.inicio);
-        return {
-          fuenteId: clip.fuenteId,
-          inicio,
-          desplazamiento: aFrames(clip.desplazamiento),
-          duracion: aFrames(clip.inicio + clip.duracion) - inicio,
-          ganancia: dbALineal(clip.ganancia),
-          fundidoEntrada: aFrames(clip.fundidoEntrada),
-          fundidoSalida: aFrames(clip.fundidoSalida),
-        };
-      }),
-    }));
-    const firma = JSON.stringify(pistas);
-    if (firma !== this.firmaMontaje) {
-      this.firmaMontaje = firma;
-      const fin = Math.max(0, ...pistas.flatMap((p) => p.clips.map((c) => c.inicio + c.duracion)));
-      const fuentes = Object.fromEntries(proyecto.fuentes.map((f) => [f.id, f.frames]));
-      this.planificarFragmentos();
-      this.enviar({ tipo: "proyecto", pistas, fin, fuentes });
+  /**
+   * Show continuo: deja preparada la canción que sonará, sin cortes, al terminar la actual.
+   * Con `null` se cancela. El audio de su arranque se precarga cuando se acerca el final.
+   */
+  encolar(proyecto: Proyecto | null, pulsos: Pulso[]): void {
+    this.siguiente = proyecto ? { proyecto, pulsos } : null;
+    if (!this.nodo) return;
+    if (!proyecto) {
+      this.enviar({ tipo: "encolar", montaje: null });
+      return;
     }
+    const { frames, fuertes } = pulsosAFrames(pulsos);
+    const montaje: Montaje = {
+      ...montar(proyecto), velocidad: proyecto.velocidad, tono: proyecto.tono, pulsos: frames, fuertes,
+    };
+    this.enviar({ tipo: "encolar", montaje });
+    this.planificarFragmentos();
   }
 
   private enviarParametros(): void {
@@ -199,9 +261,7 @@ export class MotorAudio {
 
   fijarPulsos(pulsos: Pulso[]): void {
     this.pulsos = pulsos;
-    const frames = new Float64Array(pulsos.map((p) => p.t * FRECUENCIA));
-    const fuertes = new Uint8Array(pulsos.map((p) => (p.pulso === 1 ? 1 : 0)));
-    this.enviar({ tipo: "pulsos", frames, fuertes });
+    this.enviar({ tipo: "pulsos", ...pulsosAFrames(pulsos) });
   }
 
   fijarBucle(bucle: { inicio: number; fin: number } | null): void {
@@ -225,12 +285,16 @@ export class MotorAudio {
     const p = this.proyecto;
     if (!p) return;
     const desde = this.estado.posicion;
-    // La cuenta regresiva va al tempo que el oyente va a escuchar (tempo local × velocidad).
-    const clics = p.metronomo.cuentaRegresiva * p.compas;
-    const intervalo = (60 / (this.bpmEn(desde) * p.velocidad)) * FRECUENCIA;
+    // La cuenta regresiva va al tempo que el oyente va a escuchar (tempo local × velocidad):
+    // N compases de 1 a 6 tiempos, contados a negras o a corcheas.
+    const tiempos = p.metronomo.cuentaTiempos ?? p.compas;
+    const porTiempo = p.metronomo.cuentaFigura === "corchea" ? 2 : 1;
+    const clics = p.metronomo.cuentaRegresiva * tiempos * porTiempo;
+    const intervalo = ((60 / (this.bpmEn(desde) * p.velocidad)) * FRECUENCIA) / porTiempo;
     this.planificarFragmentos();
     this.enviar({
-      tipo: "reproducir", desde: aFrames(desde), clicsDeCuenta: clics, intervaloDeCuenta: intervalo, compas: p.compas,
+      tipo: "reproducir", desde: aFrames(desde), clicsDeCuenta: clics, intervaloDeCuenta: intervalo,
+      compas: tiempos * porTiempo,
     });
   }
 
@@ -253,30 +317,38 @@ export class MotorAudio {
     const p = this.proyecto;
     if (!p || !this.nodo) return;
     const necesarios = new Set<string>();
-    const anotar = (desde: number, hasta: number) => {
-      for (const pista of p.pistas) {
+    const anotar = (proyecto: Proyecto, desde: number, hasta: number) => {
+      for (const pista of proyecto.pistas) {
         for (const clip of pista.clips) {
           const a = Math.max(desde, clip.inicio);
           const b = Math.min(hasta, clip.inicio + clip.duracion);
           if (b <= a) continue;
           const primero = aFrames(clip.desplazamiento + (a - clip.inicio)) >> BITS_FRAGMENTO;
           const ultimo = aFrames(clip.desplazamiento + (b - clip.inicio)) >> BITS_FRAGMENTO;
-          for (let i = primero; i <= ultimo; i++) necesarios.add(`${clip.fuenteId}:${i}`);
+          for (let i = primero; i <= ultimo; i++) necesarios.add(`${rutaDe(proyecto.id, clip.fuenteId)}:${i}`);
         }
       }
     };
     const cursor = this.estado.posicion;
-    anotar(cursor - VENTANA_DETRAS, cursor + VENTANA_DELANTE * Math.max(1, p.velocidad));
-    if (this.bucle) anotar(this.bucle.inicio, this.bucle.inicio + VENTANA_DELANTE / 2);
+    anotar(p, cursor - VENTANA_DETRAS, cursor + VENTANA_DELANTE * Math.max(1, p.velocidad));
+    if (this.bucle) anotar(p, this.bucle.inicio, this.bucle.inicio + VENTANA_DELANTE / 2);
+    // Cerca del final, el arranque de la canción siguiente ya debe estar en memoria.
+    if (this.siguiente && !this.bucle) {
+      const fin = Math.max(0, ...p.pistas.flatMap((x) => x.clips.map((c) => c.inicio + c.duracion)));
+      if (fin - cursor < ANTELACION_SIGUIENTE * Math.max(1, p.velocidad)) {
+        anotar(this.siguiente.proyecto, 0, VENTANA_DELANTE / 2);
+      }
+    }
 
     for (const clave of necesarios) this.pedir(clave, false);
     // Lo que queda lejos del cursor se libera: así la memoria no crece con la duración del tema.
     const sobrantes = new Map<string, number[]>();
     for (const clave of this.cargados) {
       if (necesarios.has(clave)) continue;
-      const [fuenteId, indice] = clave.split(":");
-      if (!sobrantes.has(fuenteId)) sobrantes.set(fuenteId, []);
-      sobrantes.get(fuenteId)!.push(Number(indice));
+      const corte = clave.lastIndexOf(":");
+      const ruta = clave.slice(0, corte);
+      if (!sobrantes.has(ruta)) sobrantes.set(ruta, []);
+      sobrantes.get(ruta)!.push(Number(clave.slice(corte + 1)));
       this.cargados.delete(clave);
     }
     for (const [fuenteId, indices] of sobrantes) this.enviar({ tipo: "descartar", fuenteId, indices });
@@ -295,18 +367,20 @@ export class MotorAudio {
   }
 
   private bombear(): void {
-    const p = this.proyecto;
-    while (p && this.enCurso.size < DESCARGAS_SIMULTANEAS && this.cola.length > 0) {
+    while (this.enCurso.size < DESCARGAS_SIMULTANEAS && this.cola.length > 0) {
       const clave = this.cola.shift()!;
-      const [fuenteId, indiceTexto] = clave.split(":");
-      const indice = Number(indiceTexto);
+      const corte = clave.lastIndexOf(":");
+      const ruta = clave.slice(0, corte);
+      const indice = Number(clave.slice(corte + 1));
+      const [idProyecto, idFuente] = ruta.split("/");
       this.enCurso.add(clave);
       motor
-        .pcm(p.id, fuenteId, indice * FRAMES_FRAGMENTO, FRAMES_FRAGMENTO)
+        .pcm(idProyecto, idFuente, indice * FRAMES_FRAGMENTO, FRAMES_FRAGMENTO)
         .then((datos) => {
-          if (this.proyecto?.id !== p.id) return; // llegó tarde: ya hay otro proyecto abierto
+          // Si llegó tarde y ya no pertenece ni a la canción actual ni a la encolada, se descarta.
+          if (idProyecto !== this.proyecto?.id && idProyecto !== this.siguiente?.proyecto.id) return;
           this.cargados.add(clave);
-          this.enviar({ tipo: "fragmento", fuenteId, indice, datos }, [datos.buffer]);
+          this.enviar({ tipo: "fragmento", fuenteId: ruta, indice, datos }, [datos.buffer]);
         })
         .catch((error) => console.error("No se pudo cargar el fragmento", clave, error))
         .finally(() => {

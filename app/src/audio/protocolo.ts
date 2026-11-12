@@ -22,8 +22,21 @@ export interface PistaProcesador {
   tono: number;
 }
 
+/** Todo lo que el procesador necesita para reproducir una canción entera. */
+export interface Montaje {
+  pistas: PistaProcesador[];
+  fin: number;
+  fuentes: Record<string, number>;
+  velocidad: number;
+  tono: number;
+  pulsos: Float64Array;
+  fuertes: Uint8Array;
+}
+
 export type MensajeAlProcesador =
   | { tipo: "proyecto"; pistas: PistaProcesador[]; fin: number; fuentes: Record<string, number> }
+  /** Show continuo: canción que debe empezar, sin cortes, cuando acabe la actual (null = ninguna). */
+  | { tipo: "encolar"; montaje: Montaje | null }
   | { tipo: "pulsos"; frames: Float64Array; fuertes: Uint8Array }
   | { tipo: "fragmento"; fuenteId: string; indice: number; datos: Int16Array }
   | { tipo: "descartar"; fuenteId: string; indices: number[] }
@@ -43,4 +56,6 @@ export type EstadoTransporte = "detenido" | "cuenta" | "reproduciendo";
 export type MensajeDelProcesador =
   | { tipo: "posicion"; posicion: number; estado: EstadoTransporte; cuenta: number; esperando: boolean }
   | { tipo: "falta"; fuenteId: string; indice: number }
+  /** La canción encolada ha empezado a sonar. */
+  | { tipo: "cambio" }
   | { tipo: "fin" };

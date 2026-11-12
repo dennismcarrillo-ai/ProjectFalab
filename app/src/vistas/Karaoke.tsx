@@ -1,3 +1,4 @@
+import { colorDeSeccion } from "../componentes/Directo";
 import { usarApp, usarReproduccion } from "../estado/almacen";
 import type { Acorde, Pulso } from "../tipos";
 
@@ -57,7 +58,17 @@ export function Karaoke() {
   const analisis = usarApp((s) => s.analisis);
   const segmentos = analisis?.letras.segmentos ?? [];
   if (!analisis) return <div className="karaoke" />;
-  const tira = <TiraDeAcordes acordes={analisis.acordes} pulsos={analisis.mapaTempo.pulsos} posicion={posicion} />;
+  const seccion = analisis.secciones.find((s) => posicion >= s.inicio && posicion < s.fin);
+  const proxima = seccion && analisis.secciones[analisis.secciones.indexOf(seccion) + 1];
+  const tira = (
+    <>
+      <div className="seccion-actual">
+        {seccion && <strong style={{ color: colorDeSeccion(seccion.nombre) }}>{seccion.nombre}</strong>}
+        {proxima && <span className="tenue"> → {proxima.nombre} en {Math.max(0, Math.ceil(proxima.inicio - posicion))} s</span>}
+      </div>
+      <TiraDeAcordes acordes={analisis.acordes} pulsos={analisis.mapaTempo.pulsos} posicion={posicion} />
+    </>
+  );
   if (segmentos.length === 0) {
     return (
       <div className="karaoke">

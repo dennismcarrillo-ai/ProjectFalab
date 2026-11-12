@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { usarApp, usarReproduccion } from "../estado/almacen";
 import { formatearSemitonos, formatearTiempo } from "../util/formato";
 import { IconoBucle, IconoDetener, IconoIman, IconoMetronomo, IconoPausa, IconoReproducir } from "../util/iconos";
@@ -27,11 +28,31 @@ function Reloj() {
   );
 }
 
+/** Tempo de reproducción editable (un decimal). Cambiarlo ajusta la velocidad sin alterar el tono. */
+function CampoBpm() {
+  const proyecto = usarApp((s) => s.proyecto)!;
+  const actual = (proyecto.bpm * proyecto.velocidad).toFixed(1);
+  const [texto, fijarTexto] = useState(actual);
+  useEffect(() => fijarTexto(actual), [actual]);
+  const aplicar = () => {
+    const valor = Number(texto.replace(",", "."));
+    if (Number.isFinite(valor) && valor > 0) usarApp.getState().fijarBpm(Math.round(valor * 10) / 10);
+    fijarTexto((usarApp.getState().proyecto!.bpm * usarApp.getState().proyecto!.velocidad).toFixed(1));
+  };
+  return (
+    <input type="text" inputMode="decimal" className="mono" value={texto} aria-label="Tempo en BPM" style={{ width: 62, textAlign: "right" }}
+      title={`Tempo de reproducción. El original es ${proyecto.bpm.toFixed(1)} BPM.`}
+      onChange={(e) => fijarTexto(e.target.value)} onBlur={aplicar}
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }} />
+  );
+}
+
 export function Transporte() {
   const proyecto = usarApp((s) => s.proyecto)!;
   const estado = usarReproduccion((s) => s.estado);
   const esperando = usarReproduccion((s) => s.esperando);
-  const { ajustarProyecto, alternarReproduccion, detener, alternarBucle, fijar } = usarApp.getState();
+  const { ajustarProyecto, alternarReproduccion, detener, alternarBucle, fijar, alternarShow } = usarApp.getState();
+  const show = usarApp((s) => s.showContinuo);
   const bucle = usarApp((s) => s.bucle);
   const iman = usarApp((s) => s.iman);
   const zoom = usarApp((s) => s.zoom);
@@ -66,6 +87,8 @@ export function Transporte() {
           onDoubleClick={() => ajustarProyecto({ velocidad: 1 })}
         />
         <span className="valor">{Math.round(proyecto.velocidad * 100)}%</span>
+        <CampoBpm />
+        <label>BPM</label>
       </div>
       <div className="grupo" title="Cambia el tono sin alterar la velocidad (semitonos)">
         <label>Tono</label>
@@ -99,12 +122,35 @@ export function Transporte() {
           <option value={0}>No</option>
           <option value={1}>1 compás</option>
           <option value={2}>2 compases</option>
+          <option value={3}>3 compases</option>
+          <option value={4}>4 compases</option>
         </select>
+        {metronomo.cuentaRegresiva > 0 && (
+          <>
+            <select value={metronomo.cuentaTiempos ?? proyecto.compas} aria-label="Tiempos por compás de la cuenta"
+              title="Tiempos por compás de la cuenta"
+              onChange={(e) => ajustarProyecto({ metronomo: { ...metronomo, cuentaTiempos: Number(e.target.value) } })}>
+              {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} {n === 1 ? "tiempo" : "tiempos"}</option>)}
+            </select>
+            <select value={metronomo.cuentaFigura ?? "negra"} aria-label="Figura de la cuenta" title="Contar a negras o a corcheas"
+              onChange={(e) => ajustarProyecto({ metronomo: { ...metronomo, cuentaFigura: e.target.value as "negra" | "corchea" } })}>
+              <option value="negra">♩ negras</option>
+              <option value="corchea">♪ corcheas</option>
+            </select>
+          </>
+        )}
       </div>
       <div className="separador" />
 
       <button className={bucle ? "activo" : ""} onClick={alternarBucle} title="Repetir el tramo marcado en la regla (L)">
         <IconoBucle />
+      </button>
+      <button className={show ? "activo" : ""} onClick={alternarShow} aria-pressed={show}
+        title="Show continuo: al terminar, empieza la canción siguiente de la lista sin cortes">
+        Show
+      </button>
+      <button onClick={() => fijar({ dialogo: "estructura" })} title="Marcadores de ensayo, compás por sección y guías de voz">
+        Estructura
       </button>
       {vista === "editor" && (
         <>

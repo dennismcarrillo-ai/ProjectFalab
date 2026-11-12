@@ -56,6 +56,10 @@ export interface Metronomo {
   volumen: number;
   /** Compases de cuenta regresiva antes de reproducir (0 = sin cuenta). */
   cuentaRegresiva: number;
+  /** Tiempos por compás de la cuenta (1–6). Si falta, el compás del proyecto. */
+  cuentaTiempos?: number;
+  /** La cuenta se marca a negras o a corcheas. */
+  cuentaFigura?: "negra" | "corchea";
 }
 
 export interface Proyecto {
@@ -120,7 +124,25 @@ export interface Pulso {
   bpm: number;
   compas: number;
   pulso: number;
+  /** Tiempos del compás al que pertenece (solo si una sección cambió el compás). */
+  tiempos?: number;
 }
+
+/** Marcador de ensayo: una parte de la canción (Intro, Verso, Coro…). */
+export interface Seccion {
+  inicio: number;
+  fin: number;
+  nombre: string;
+  /** Tiempos por compás desde esta sección en adelante (si cambia). */
+  compas?: number;
+}
+
+/** Acción del directo que puede dispararse con un pedal. */
+export type AccionPedal = "reproducir" | "siguiente" | "anterior";
+export type Disparador =
+  | { tipo: "tecla"; codigo: string }
+  | { tipo: "midi"; estado: number; dato1: number };
+export type AsignacionPedal = Partial<Record<AccionPedal, Disparador[]>>;
 
 export interface Acorde {
   inicio: number;
@@ -156,6 +178,7 @@ export type Cifrado = "estandar" | "jazz" | "latino";
 
 export interface Analisis {
   mapaTempo: { bpm: number; compas: number; pulsos: Pulso[] };
+  secciones: Seccion[];
   tonalidad: Tonalidad;
   acordes: Acorde[];
   letras: { idioma: string | null; segmentos: SegmentoLetra[] };

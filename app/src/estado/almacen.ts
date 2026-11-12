@@ -4,15 +4,17 @@ import { motorAudio, type EstadoReproduccion } from "../audio/MotorAudio";
 import {
   copiarClips, copiarRango, dividir, eliminar, finDe, pegar, quitarRango,
 } from "../edicion/operaciones";
-import { motor, seguirTrabajo, type OpcionesImportar, type PeticionExportar } from "../servicios/motor";
+import {
+  motor, seguirTrabajo, type EventoMidi, type OpcionesImportar, type PeticionExportar,
+} from "../servicios/motor";
 import type {
-  Analisis, Cifrado, Clip, DetalleAcordes, Ecualizador, OrdenPlaylist, Pista, Playlist, Portapapeles, Proyecto,
-  ResumenProyecto, Salud, Trabajo,
+  AccionPedal, Analisis, AsignacionPedal, Cifrado, Clip, DetalleAcordes, Disparador, Ecualizador, OrdenPlaylist,
+  Pista, Playlist, Portapapeles, Proyecto, ResumenProyecto, Salud, Seccion, Trabajo,
 } from "../tipos";
 import { desplazar, ordenar } from "../util/biblioteca";
 
 export type Vista = "editor" | "karaoke" | "cancionero" | "partitura";
-export type Dialogo = null | "exportar" | "drive";
+export type Dialogo = null | "exportar" | "drive" | "estructura" | "pedal";
 type Montaje = Record<string, Clip[]>;
 
 const MAX_HISTORIAL = 100;
@@ -37,6 +39,11 @@ interface EstadoApp {
   ordenGeneral: OrdenPlaylist;
   panelLateral: boolean;
   driveAutomatico: boolean;
+  /** Show continuo: al acabar una canción empieza la siguiente de la lista, sin cortes. */
+  showContinuo: boolean;
+  pedal: AsignacionPedal;
+  /** Si no es null, el próximo pedal o tecla pulsado se entrega aquí en vez de ejecutar su acción. */
+  aprendiendo: ((disparador: Disparador) => void) | null;
   proyecto: Proyecto | null;
   analisis: Analisis | null;
   cifrado: Cifrado;
@@ -85,6 +92,20 @@ interface EstadoApp {
   fijarDriveAutomatico(activo: boolean): Promise<void>;
   guardarLetras(lineas: { inicio: number; texto: string }[]): Promise<void>;
   recalcularAcordes(detalle: DetalleAcordes): Promise<void>;
+
+  // Directo
+  alternarShow(): void;
+  /** Fija el tempo de reproducción en BPM (cambia la velocidad sin alterar el tono). */
+  fijarBpm(bpm: number): void;
+  guardarEstructura(secciones: Seccion[]): Promise<void>;
+  detectarEstructura(): Promise<void>;
+  corregirMapa(operacion: "doble" | "mitad" | "desplazar"): Promise<void>;
+  generarGuias(): Promise<void>;
+  fijarPedal(pedal: AsignacionPedal): Promise<void>;
+  aprender(receptor: ((disparador: Disparador) => void) | null): void;
+  /** Ejecuta la acción asignada a ese disparador (o lo entrega a quien esté aprendiendo). */
+  disparar(disparador: Disparador): boolean;
+  accion(accion: AccionPedal): void;
   fijarCifrado(cifrado: Cifrado): Promise<void>;
   seleccionar(clips: string[], pistaId: string | null): void;
   fijarRango(rango: { inicio: number; fin: number } | null): void;
@@ -151,11 +172,88 @@ export const usarApp = create<EstadoApp>((set, get) => {
     motorAudio.fijarPulsos(analisis.mapaTempo.pulsos);
   };
 
+  /** Vuelve a leer el proyecto abierto cuando el motor lo ha modificado (guías, tempo…). */
+  const recargar = async (): Promise<void> => {
+    const actual = get().proyecto;
+    if (!actual) return;
+    const proyecto = await motor.proyecto(actual.id);
+    set({ proyecto, guardado: "guardado" });
+    motorAudio.actualizar(proyecto);
+    await cargarAnalisis();
+  };
+
+  /** Show continuo: deja cargada la canción que sigue a la actual en la lista. */
+  let preparada: { proyecto: Proyecto; analisis: Analisis } | null = null;
+  const prepararSiguiente = async (): Promise<void> => {
+    const { proyecto, showContinuo, cifrado } = get();
+    preparada = null;
+    if (!proyecto || !showContinuo) {
+      motorAudio.encolar(null, []);
+      return;
+    }
+    const cola = get().cola();
+    const destino = cola[cola.findIndex((p) => p.id === proyecto.id) + 1];
+    if (!destino) {
+      motorAudio.encolar(null, []);
+      return;
+    }
+    try {
+      const siguiente = await motor.proyecto(destino.id);
+      const analisis = await motor.analisis(destino.id, cifrado, siguiente.tono);
+      // Mientras se cargaba, el usuario pudo cambiar de canción o apagar el show.
+      if (get().proyecto?.id !== proyecto.id || !get().showContinuo) return;
+      preparada = { proyecto: siguiente, analisis };
+      motorAudio.encolar(siguiente, analisis.mapaTempo.pulsos);
+    } catch {
+      motorAudio.encolar(null, []);
+    }
+  };
+
+  // El procesador de audio avisa cuando la canción encolada empieza a sonar.
+  motorAudio.alCambiarDeCancion = (proyecto) => {
+    void guardarAhora(); // lo pendiente de la canción que acaba de terminar
+    const analisis = preparada?.proyecto.id === proyecto.id ? preparada.analisis : null;
+    set({
+      proyecto, analisis, clipsSeleccionados: [], pistaActiva: proyecto.pistas[0]?.id ?? null, rango: null,
+      pasado: [], futuro: [], bucle: false, guardado: "guardado",
+    });
+    if (!analisis) void cargarAnalisis();
+    void prepararSiguiente();
+  };
+
+  /** Escucha el pedal MIDI: una petición que espera hasta que llega un mensaje, en bucle. */
+  let escuchando = false;
+  const escucharMidi = async (): Promise<void> => {
+    if (escuchando) return;
+    escuchando = true;
+    let ultimo = 0;
+    let exploradoEn = 0;
+    for (;;) {
+      try {
+        if (Date.now() - exploradoEn > 15000) {
+          const estado = await motor.midi.estado(); // abre los pedales recién conectados
+          exploradoEn = Date.now();
+          if (!estado.disponible) return void (escuchando = false);
+          ultimo = Math.max(ultimo, estado.ultimo);
+        }
+        const { eventos } = await motor.midi.eventos(ultimo);
+        for (const evento of eventos) {
+          ultimo = Math.max(ultimo, evento.n);
+          const disparador = disparadorMidi(evento);
+          if (disparador) get().disparar(disparador);
+        }
+      } catch {
+        await new Promise((resolver) => setTimeout(resolver, 3000));
+      }
+    }
+  };
+
   /** Guarda las playlists en el motor; si falla, se recupera el estado real. */
   const fijarPlaylists = async (playlists: Playlist[]): Promise<void> => {
     set({ playlists }); // optimista: la lista responde al instante
     try {
       set({ playlists: (await motor.guardarPlaylists(playlists)).playlists });
+      void prepararSiguiente(); // reordenar la lista cambia cuál es «la siguiente»
     } catch (error) {
       set({ playlists: (await motor.biblioteca()).playlists,
         aviso: { texto: `No se pudo guardar la playlist: ${(error as Error).message}`, tipo: "error" } });
@@ -181,6 +279,9 @@ export const usarApp = create<EstadoApp>((set, get) => {
     ordenGeneral: "manual",
     panelLateral: false,
     driveAutomatico: false,
+    showContinuo: false,
+    pedal: {},
+    aprendiendo: null,
     proyecto: null,
     analisis: null,
     cifrado: "estandar",
@@ -208,7 +309,9 @@ export const usarApp = create<EstadoApp>((set, get) => {
           set({
             salud, errorMotor: null, proyectos: await motor.proyectos(),
             playlists: biblioteca.playlists, driveAutomatico: biblioteca.ajustes.driveAutomatico,
+            pedal: biblioteca.ajustes.pedal ?? {},
           });
+          void escucharMidi();
           return;
         } catch (error) {
           if (intento === 39) set({ errorMotor: (error as Error).message || String(error) });
@@ -237,6 +340,7 @@ export const usarApp = create<EstadoApp>((set, get) => {
         motorAudio.saltar(0);
         void get().refrescarProyectos(); // el panel lateral debe incluir lo recién importado
         await cargarAnalisis();
+        void prepararSiguiente();
       } catch (error) {
         set({ aviso: { texto: `No se pudo abrir el proyecto: ${(error as Error).message}`, tipo: "error" } });
       }
@@ -303,7 +407,96 @@ export const usarApp = create<EstadoApp>((set, get) => {
       }
     },
 
-    fijar: (parcial) => set(parcial),
+    fijar(parcial) {
+      set(parcial);
+      // Cambiar de lista o de orden cambia cuál es «la siguiente».
+      if ("playlistActiva" in parcial || "ordenGeneral" in parcial) void prepararSiguiente();
+    },
+
+    alternarShow() {
+      set({ showContinuo: !get().showContinuo });
+      void prepararSiguiente();
+    },
+
+    fijarBpm(bpm) {
+      const base = get().proyecto?.bpm;
+      if (!base || !Number.isFinite(bpm) || bpm <= 0) return;
+      get().ajustarProyecto({ velocidad: Math.min(2, Math.max(0.25, Math.round((bpm / base) * 10000) / 10000)) });
+    },
+
+    async guardarEstructura(secciones) {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      try {
+        await motor.guardarEstructura(proyecto.id, secciones);
+        await cargarAnalisis();
+      } catch (error) {
+        set({ aviso: { texto: `No se pudo guardar la estructura: ${(error as Error).message}`, tipo: "error" } });
+      }
+    },
+
+    async detectarEstructura() {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      const final = await get().ejecutar("Detectando la estructura", () => motor.detectarEstructura(proyecto.id));
+      if (final) await cargarAnalisis();
+    },
+
+    async corregirMapa(operacion) {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      try {
+        await guardarAhora();
+        await motor.corregirMapa(proyecto.id, operacion);
+        await recargar();
+      } catch (error) {
+        set({ aviso: { texto: `No se pudo corregir el tempo: ${(error as Error).message}`, tipo: "error" } });
+      }
+    },
+
+    async generarGuias() {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      await guardarAhora(); // el motor añade la pista sobre lo que hay guardado
+      const final = await get().ejecutar("Generando las guías de voz", () => motor.generarGuias(proyecto.id));
+      if (final) {
+        await recargar();
+        set({ aviso: { texto: `Pista «Guías» creada con ${final.resultado.avisos} avisos. Tiene su propio volumen y silencio en el mezclador.`, tipo: "info" } });
+      }
+    },
+
+    async fijarPedal(pedal) {
+      set({ pedal });
+      try {
+        await motor.guardarAjustes({ pedal });
+      } catch (error) {
+        set({ aviso: { texto: `No se pudo guardar el pedal: ${(error as Error).message}`, tipo: "error" } });
+      }
+    },
+
+    aprender: (receptor) => set({ aprendiendo: receptor }),
+
+    disparar(disparador) {
+      const { aprendiendo, pedal } = get();
+      if (aprendiendo) {
+        set({ aprendiendo: null });
+        aprendiendo(disparador);
+        return true;
+      }
+      for (const accion of ["reproducir", "siguiente", "anterior"] as AccionPedal[]) {
+        if ((pedal[accion] ?? []).some((d) => mismoDisparador(d, disparador))) {
+          get().accion(accion);
+          return true;
+        }
+      }
+      return false;
+    },
+
+    accion(accion) {
+      if (!get().proyecto || get().trabajo) return;
+      if (accion === "reproducir") get().alternarReproduccion();
+      else void get().irA(accion === "siguiente" ? 1 : -1);
+    },
 
     async crearPlaylist(nombre) {
       await fijarPlaylists([...get().playlists, { id: "", nombre, orden: "manual", proyectos: [] }]);
@@ -339,7 +532,11 @@ export const usarApp = create<EstadoApp>((set, get) => {
       const cola = get().cola();
       if (!actual || cola.length === 0) return;
       const destino = cola[cola.findIndex((p) => p.id === actual.id) + delta];
-      if (destino) await get().abrir(destino.id);
+      if (!destino) return;
+      // En directo, cambiar de canción mientras suena no detiene el show.
+      const sonaba = usarReproduccion.getState().estado !== "detenido";
+      await get().abrir(destino.id);
+      if (sonaba && get().proyecto?.id === destino.id) void motorAudio.reproducir();
     },
 
     async exportarPaquete(id, destino) {
@@ -553,3 +750,24 @@ export function duracionDe(proyecto: Proyecto | null): number {
   return Math.max(0, ...proyecto.pistas.flatMap((p) => p.clips.map(finDe)));
 }
 
+
+
+/** Solo cuentan las pulsaciones: nota pulsada, controlador a fondo o cambio de programa. */
+export function disparadorMidi(evento: Pick<EventoMidi, "estado" | "dato1" | "dato2">): Disparador | null {
+  if (evento.estado === 0x90 && evento.dato2 > 0) return { tipo: "midi", estado: 0x90, dato1: evento.dato1 };
+  if (evento.estado === 0xb0 && evento.dato2 >= 64) return { tipo: "midi", estado: 0xb0, dato1: evento.dato1 };
+  if (evento.estado === 0xc0) return { tipo: "midi", estado: 0xc0, dato1: evento.dato1 };
+  return null;
+}
+
+export function mismoDisparador(a: Disparador, b: Disparador): boolean {
+  if (a.tipo === "tecla" && b.tipo === "tecla") return a.codigo === b.codigo;
+  if (a.tipo === "midi" && b.tipo === "midi") return a.estado === b.estado && a.dato1 === b.dato1;
+  return false;
+}
+
+export function nombreDeDisparador(d: Disparador): string {
+  if (d.tipo === "tecla") return `Tecla ${d.codigo.replace(/^Key|^Digit/, "")}`;
+  const clase = d.estado === 0x90 ? "Nota" : d.estado === 0xb0 ? "Controlador" : "Programa";
+  return `MIDI · ${clase} ${d.dato1}`;
+}

@@ -20,6 +20,10 @@ no hay servidores ni coste por uso, y tu música no sale de tu ordenador.
 - **Biblioteca y playlists**: ficha de cada proyecto (peso, archivos, tempo, tonalidad), listas
   con orden manual, alfabético, por duración, BPM o tonalidad (cromática o círculo de quintas),
   panel lateral y botones de canción anterior/siguiente.
+- **Directo**: show continuo (la canción siguiente empalma sin cortes), pedal MIDI o de teclado,
+  tempo editable en BPM con un decimal, cuenta regresiva de 1–4 compases de 1–6 tiempos a negras o
+  corcheas, marcadores de ensayo automáticos y editables, compás por sección y pista de guías de
+  voz («Coro, dos, tres, cuatro»).
 - **Proyectos portátiles**: exportar e importar un proyecto completo como archivo `.falab`.
 - **Letra editable** y **detalle de acordes** ajustable para recuperar los acordes de paso.
 - **Google Drive**: sincronización de proyectos en la carpeta `falab_projects`, manual o
@@ -82,17 +86,20 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (19 pruebas automáticas) |
-| Edición, EQ, reproductor y orden de playlists | Probado (33 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (25 pruebas automáticas) |
+| Edición, EQ, reproductor y orden de playlists | Probado (35 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
 | Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
+| Pedal MIDI y voz de las guías | La lógica está probada con mensajes y voz simulados; **pendiente de confirmar** con un pedal real y con la voz de macOS |
 | Google Drive (subida, descarga y guardado automático) | La cola automática está probada con un Drive simulado; **pendiente de confirmar** contra Drive real |
 
 ## Limitaciones conocidas
 
 - El stem de **piano** de `htdemucs_6s` es experimental en el propio Demucs y suele ser el menos limpio.
 - Partitura y tablatura son transcripciones automáticas: sirven de punto de partida, no de edición final.
-- El compás se asume en 4/4.
+- El compás se detecta como 4/4; los cambios de compás se indican a mano por sección.
+- Los nombres de las secciones (Verso, Coro…) son una propuesta automática: revísalos.
+- En el show continuo, si alguna de las dos canciones usa cambio de velocidad o de tono, el empalme pierde unos milisegundos del final de la primera.
 - Al exportar video, los cortes y movimientos de clips afectan al audio pero no a la imagen.
 - La vista Partitura no aplica la transposición global (el cancionero y los acordes sí).
 

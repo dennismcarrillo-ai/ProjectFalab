@@ -6,8 +6,17 @@
  * - En un navegador (desarrollo con `npm run dev`) se llama al motor directamente por HTTP.
  */
 import type {
-  Analisis, Cifrado, DetalleAcordes, Playlist, Proyecto, ResumenProyecto, Salud, Trabajo,
+  Analisis, AsignacionPedal, Cifrado, DetalleAcordes, Playlist, Proyecto, ResumenProyecto, Salud, Seccion, Trabajo,
 } from "../tipos";
+
+export interface EventoMidi {
+  n: number;
+  puerto: string;
+  estado: number;
+  canal: number;
+  dato1: number;
+  dato2: number;
+}
 
 export interface EstadoDrive {
   configurado: boolean;
@@ -81,10 +90,23 @@ export const motor = {
   guardar: (p: Proyecto) => json<{ modificado: string }>("PUT", `/proyectos/${p.id}`, p),
   eliminar: (id: string) => json("DELETE", `/proyectos/${id}`),
   demo: () => json<Trabajo>("POST", "/proyectos/demo"),
-  biblioteca: () => json<{ playlists: Playlist[]; ajustes: { driveAutomatico: boolean } }>("GET", "/biblioteca"),
+  biblioteca: () =>
+    json<{ playlists: Playlist[]; ajustes: { driveAutomatico: boolean; pedal?: AsignacionPedal } }>("GET", "/biblioteca"),
+  guardarEstructura: (id: string, secciones: Seccion[]) =>
+    json<{ secciones: Seccion[] }>("PUT", `/proyectos/${id}/estructura`, { secciones }),
+  detectarEstructura: (id: string) => json<Trabajo>("POST", `/proyectos/${id}/estructura/detectar`),
+  corregirMapa: (id: string, operacion: "doble" | "mitad" | "desplazar") =>
+    json<{ bpm: number }>("POST", `/proyectos/${id}/mapa-tempo`, { operacion }),
+  generarGuias: (id: string) => json<Trabajo>("POST", `/proyectos/${id}/guias`),
+  midi: {
+    estado: () => json<{ disponible: boolean; puertos: string[]; ultimo: number; error: string | null }>("GET", "/midi/estado"),
+    eventos: (desde: number) =>
+      json<{ eventos: EventoMidi[] }>("GET", `/midi/eventos${q({ desde, espera: 20 })}`),
+  },
   guardarPlaylists: (playlists: Playlist[]) =>
     json<{ playlists: Playlist[] }>("PUT", "/biblioteca/playlists", { playlists }),
-  guardarAjustes: (ajustes: { driveAutomatico: boolean }) => json("PUT", "/biblioteca/ajustes", ajustes),
+  guardarAjustes: (ajustes: { driveAutomatico?: boolean; pedal?: AsignacionPedal }) =>
+    json("PUT", "/biblioteca/ajustes", ajustes),
   empaquetar: (id: string, destino?: string) => json<Trabajo>("POST", `/proyectos/${id}/empaquetar`, { destino }),
   importarPaquete: (ruta: string) => json<Trabajo>("POST", "/proyectos/importar-paquete", { ruta }),
   editarLetras: (id: string, lineas: { inicio: number; texto: string }[]) =>

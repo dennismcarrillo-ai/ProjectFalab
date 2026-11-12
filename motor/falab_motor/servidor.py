@@ -12,10 +12,12 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFil
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import __version__, biblioteca, config, drive, edicion_letras, medios, paquete, proyecto as modelo
+from . import (__version__, biblioteca, config, drive, edicion_letras, guias, medios, midi, paquete,
+               proyecto as modelo)
 from .exportacion import cancionero
 from .exportacion.exportar import exportar
 from .pipeline import acordes as modulo_acordes
+from .pipeline import estructura as modulo_estructura
 from .pipeline import orquestador
 from .trabajos import GestorTrabajos
 
@@ -191,6 +193,61 @@ def recalcular_acordes(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
     return trabajos.lanzar("acordes", lambda t: orquestador.recalcular_acordes(id_proyecto, detalle, t)).a_dict()
 
 
+@app.put("/proyectos/{id_proyecto}/estructura")
+def guardar_estructura(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
+    """Guarda los marcadores de ensayo editados a mano (nombre, inicio y compás de cada sección)."""
+    p = _proyecto(id_proyecto)
+    try:
+        secciones = modulo_estructura.normalizar(cuerpo.get("secciones", []), p["duracion"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(400, "Secciones no válidas.") from error
+    modelo.escribir_analisis(id_proyecto, "estructura", {"secciones": secciones, "automatica": False})
+    drive.anotar_cambio(id_proyecto)
+    return {"secciones": secciones}
+
+
+@app.post("/proyectos/{id_proyecto}/estructura/detectar")
+def detectar_estructura(id_proyecto: str) -> dict:
+    _proyecto(id_proyecto)
+    return trabajos.lanzar("estructura", lambda t: orquestador.detectar_estructura(id_proyecto, t)).a_dict()
+
+
+@app.post("/proyectos/{id_proyecto}/mapa-tempo")
+def corregir_mapa(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
+    """Corrige el mapa de pulsos: «doble», «mitad» o «desplazar» el primer tiempo."""
+    p = _proyecto(id_proyecto)
+    mapa = modelo.leer_analisis(id_proyecto, "mapa_tempo", {"pulsos": []})
+    try:
+        nuevo = modulo_estructura.corregir_mapa(mapa, cuerpo.get("operacion", ""))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    modelo.escribir_analisis(id_proyecto, "mapa_tempo", nuevo)
+    p["bpm"] = nuevo["bpm"]
+    modelo.guardar(p)
+    drive.anotar_cambio(id_proyecto)
+    return {"bpm": nuevo["bpm"], "pulsos": len(nuevo["pulsos"])}
+
+
+@app.post("/proyectos/{id_proyecto}/guias")
+def generar_guias(id_proyecto: str) -> dict:
+    """Genera la pista de guías de voz («Coro, dos, tres, cuatro») a partir de la estructura."""
+    _proyecto(id_proyecto)
+    return trabajos.lanzar("guias", lambda t: guias.generar(id_proyecto, t)).a_dict()
+
+
+# ---------------------------------------------------------------- pedal MIDI
+
+@app.get("/midi/estado")
+def midi_estado() -> dict:
+    return midi.explorar()
+
+
+@app.get("/midi/eventos")
+def midi_eventos(desde: int = 0, espera: float = 20.0) -> dict:
+    """Espera (hasta `espera` segundos) a que llegue un mensaje MIDI posterior al número `desde`."""
+    return {"eventos": midi.esperar(desde, espera)}
+
+
 # ---------------------------------------------------------------- biblioteca
 
 @app.get("/biblioteca")
@@ -209,7 +266,10 @@ def guardar_playlists(cuerpo: dict = Body(...)) -> dict:
 
 @app.put("/biblioteca/ajustes")
 def guardar_ajustes(cuerpo: dict = Body(...)) -> dict:
-    return {"ajustes": biblioteca.fijar_ajustes(cuerpo)}
+    try:
+        return {"ajustes": biblioteca.fijar_ajustes(cuerpo)}
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
 
 
 # ------------------------------------------------------------- audio y ondas
@@ -250,9 +310,12 @@ def analisis(id_proyecto: str, cifrado: str = "estandar", transponer: int = 0) -
         modelo.leer_analisis(id_proyecto, "acordes", {}), cifrado, max(-12, min(12, transponer)))
     letras = modelo.leer_analisis(id_proyecto, "letras", {"idioma": None, "segmentos": []})
     notas = modelo.leer_analisis(id_proyecto, "notas", {})
+    secciones = (modelo.leer_analisis(id_proyecto, "estructura", {}) or {}).get("secciones", [])
+    mapa = modelo.leer_analisis(id_proyecto, "mapa_tempo", {"bpm": p["bpm"], "compas": p["compas"], "pulsos": []})
     return {
-        "mapaTempo": modelo.leer_analisis(id_proyecto, "mapa_tempo",
-                                          {"bpm": p["bpm"], "compas": p["compas"], "pulsos": []}),
+        # El mapa se entrega ya renumerado con el compás de cada sección.
+        "mapaTempo": modulo_estructura.aplicar_compases(mapa, secciones),
+        "secciones": secciones,
         "tonalidad": con_nombres["tonalidad"],
         "acordes": con_nombres["acordes"],
         "letras": letras,

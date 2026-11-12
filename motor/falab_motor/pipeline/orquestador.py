@@ -19,7 +19,7 @@ import numpy as np
 
 from .. import config, medios, proyecto as modelo
 from ..trabajos import Cancelado, Trabajo
-from . import acordes, anti_bleed, mapa_tempo
+from . import acordes, anti_bleed, estructura, mapa_tempo
 
 OPCIONES_POR_DEFECTO = {
     "separar": True,
@@ -106,6 +106,11 @@ def _ejecutar(p: dict, carpeta: Path, ruta_medio: Path, opciones: dict, trabajo:
         "bpm": 120.0, "compas": 4, "pulsos": [], "duracion": p["duracion"]}
     p["bpm"], p["compas"] = mapa["bpm"], mapa["compas"]
     modelo.escribir_analisis(p["id"], "mapa_tempo", mapa)
+
+    # 3b · Estructura: marcadores de ensayo (Intro, Verso, Coro…).
+    trabajo.informar(0.64, "Detectando la estructura")
+    secciones = intentar("Estructura", lambda: estructura.detectar(mezcla, stems.get("voz"), mapa, p["duracion"]))
+    modelo.escribir_analisis(p["id"], "estructura", {"secciones": secciones or [], "automatica": True})
 
     # 4 · Notas (BasicPitch) y acordes.
     notas: dict[str, list[dict]] = {}
@@ -199,3 +204,15 @@ def recalcular_acordes(id_proyecto: str, detalle: str, trabajo: Trabajo) -> dict
     resultado = _acordes(notas, stems, carpeta / "audio" / "mezcla.flac", mapa, p["duracion"], detalle)
     modelo.escribir_analisis(id_proyecto, "acordes", resultado)
     return {"acordes": len(resultado["acordes"]), "detalle": detalle}
+
+
+def detectar_estructura(id_proyecto: str, trabajo: Trabajo) -> dict:
+    """Detecta (de nuevo) los marcadores de ensayo de un proyecto ya analizado."""
+    p = modelo.cargar(id_proyecto)
+    carpeta = modelo.carpeta(id_proyecto)
+    trabajo.informar(0.1, "Detectando la estructura")
+    mapa = modelo.leer_analisis(id_proyecto, "mapa_tempo", {"pulsos": []})
+    voz = next((carpeta / f["archivo"] for f in p["fuentes"] if f["id"] == "voz"), None)
+    secciones = estructura.detectar(carpeta / "audio" / "mezcla.flac", voz, mapa, p["duracion"])
+    modelo.escribir_analisis(id_proyecto, "estructura", {"secciones": secciones, "automatica": True})
+    return {"secciones": len(secciones)}

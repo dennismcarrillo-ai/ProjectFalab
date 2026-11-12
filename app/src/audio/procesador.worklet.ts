@@ -15,7 +15,7 @@
 import { SoundTouch } from "soundtouchjs";
 import {
   BITS_FRAGMENTO, FRAMES_FRAGMENTO, MAX_PISTAS,
-  type EstadoTransporte, type MensajeAlProcesador, type MensajeDelProcesador, type PistaProcesador,
+  type EstadoTransporte, type MensajeAlProcesador, type MensajeDelProcesador, type Montaje, type PistaProcesador,
 } from "./protocolo";
 
 declare const sampleRate: number;
@@ -58,6 +58,12 @@ class Cola {
     return { destino: this.datos, desde };
   }
 
+  meterSilencio(n: number): void {
+    if (n <= 0) return;
+    const { destino, desde } = this.reservar(n);
+    destino.fill(0, desde, desde + n * 2);
+  }
+
   meter(origen: Float32Array, n: number): void {
     const { destino, desde } = this.reservar(n);
     destino.set(origen.subarray(0, n * 2), desde);
@@ -94,6 +100,24 @@ class ProcesadorFalab extends AudioWorkletProcessor {
   private velocidad = 1;
   private tono = 0;
   private bucle: { inicio: number; fin: number } | null = null;
+
+  // --- Show continuo -------------------------------------------------------------------
+  // El cambio de canción tiene dos momentos, porque lo que se LEE va por delante de lo que se
+  // OYE (lo ya leído espera en las colas):
+  //   1) la lectura llega al final  -> se empieza a leer la canción siguiente («en tránsito»);
+  //   2) el oyente llega al final   -> el cursor, el metrónomo y la interfaz pasan a la nueva.
+  /** Canción encolada, aún sin empezar a leerse. */
+  private siguiente: Montaje | null = null;
+  /** Canción que ya se está leyendo pero todavía no ha empezado a sonar. */
+  private enTransito: Montaje | null = null;
+  /** Montaje de la canción que aún suena, por si hay que deshacer el tránsito. */
+  private actual: { pistas: PistaProcesador[]; fin: number; velocidad: number; tono: number } | null = null;
+  /** Final de la canción que se está leyendo. */
+  private finLectura = 0;
+  /** Posición (de la canción que suena) en la que empezará a oírse la siguiente. */
+  private posicionDeCambio = 0;
+  /** Velocidad de lo que está saliendo por los altavoces. */
+  private velocidadSalida = 1;
 
   private colas: Cola[] = [];
   private estiradores: SoundTouch[] = [];
@@ -132,8 +156,10 @@ class ProcesadorFalab extends AudioWorkletProcessor {
   private recibir(m: MensajeAlProcesador): void {
     switch (m.tipo) {
       case "proyecto":
+        this.deshacerTransito();
         this.pistas = m.pistas.slice(0, MAX_PISTAS);
         this.fin = m.fin;
+        this.finLectura = m.fin;
         this.framesDeFuente = new Map(Object.entries(m.fuentes));
         // La edición cambió: lo ya estirado en las colas corresponde al montaje anterior.
         this.resincronizar(this.posicion);
@@ -142,6 +168,10 @@ class ProcesadorFalab extends AudioWorkletProcessor {
         this.pulsos = m.frames;
         this.fuertes = m.fuertes;
         this.buscarPulso();
+        break;
+      case "encolar":
+        if (this.enTransito) break; // ya se está leyendo: demasiado tarde para cambiarla
+        this.siguiente = m.montaje && { ...m.montaje, pistas: m.montaje.pistas.slice(0, MAX_PISTAS) };
         break;
       case "fragmento": {
         let mapa = this.fragmentos.get(m.fuenteId);
@@ -176,12 +206,18 @@ class ProcesadorFalab extends AudioWorkletProcessor {
         this.informar();
         break;
       case "parametros": {
-        const cambia = m.velocidad !== this.velocidad || m.tono !== this.tono;
-        this.velocidad = m.velocidad;
-        this.tono = m.tono;
+        // Estos parámetros son los de la canción que SUENA (en tránsito, `this.velocidad` es ya la siguiente).
+        const velocidadVigente = this.actual ? this.actual.velocidad : this.velocidad;
+        const tonoVigente = this.actual ? this.actual.tono : this.tono;
+        const cambia = m.velocidad !== velocidadVigente || m.tono !== tonoVigente;
         this.metronomo = m.metronomo;
         this.bucle = m.bucle && m.bucle.fin - m.bucle.inicio > CUANTO * 4 ? m.bucle : null;
-        if (cambia) this.resincronizar(this.posicion);
+        if (cambia) {
+          this.deshacerTransito();
+          this.velocidad = m.velocidad;
+          this.tono = m.tono;
+          this.resincronizar(this.posicion);
+        }
         break;
       }
     }
@@ -189,6 +225,8 @@ class ProcesadorFalab extends AudioWorkletProcessor {
 
   /** Vacía todo lo que estaba en curso y retoma la lectura exactamente en `posicion`. */
   private resincronizar(posicion: number): void {
+    this.deshacerTransito();
+    this.velocidadSalida = this.velocidad;
     this.posicion = Math.max(0, Math.min(posicion, this.fin));
     this.lectura = Math.floor(this.posicion);
     for (let i = 0; i < MAX_PISTAS; i++) {
@@ -200,6 +238,49 @@ class ProcesadorFalab extends AudioWorkletProcessor {
     }
     this.pedidos.clear();
     this.buscarPulso();
+  }
+
+  /** Si ya se estaba leyendo la canción siguiente, vuelve a la actual y la deja encolada de nuevo. */
+  private deshacerTransito(): void {
+    if (!this.enTransito || !this.actual) return;
+    this.siguiente = this.enTransito;
+    this.enTransito = null;
+    this.pistas = this.actual.pistas;
+    this.finLectura = this.actual.fin;
+    this.velocidad = this.actual.velocidad;
+    this.tono = this.actual.tono;
+    this.actual = null;
+  }
+
+  /** Momento 1 del cambio: la lectura pasa a la canción siguiente (lo ya leído sigue sonando). */
+  private empezarALeerLaSiguiente(eraDirecto: boolean): void {
+    const nueva = this.siguiente!;
+    this.siguiente = null;
+    this.actual = { pistas: this.pistas, fin: this.finLectura, velocidad: this.velocidad, tono: this.tono };
+    this.pistas = nueva.pistas;
+    this.finLectura = nueva.fin;
+    this.velocidad = nueva.velocidad;
+    this.tono = nueva.tono;
+    for (const [id, frames] of Object.entries(nueva.fuentes)) this.framesDeFuente.set(id, frames);
+    this.lectura = 0;
+    this.enTransito = nueva;
+    // Todas las pistas de la canción nueva deben arrancar alineadas. Si había estirador se
+    // descarta su cola interna (unos milisegundos del final, normalmente ya en silencio).
+    let pendientes = 0;
+    for (let p = 0; p < MAX_PISTAS; p++) {
+      if (p < this.actual.pistas.length) pendientes = Math.max(pendientes, this.colas[p].frames);
+      else this.colas[p].vaciar();
+    }
+    for (let p = 0; p < MAX_PISTAS; p++) {
+      this.colas[p].meterSilencio(pendientes - this.colas[p].frames);
+      if (!eraDirecto || !this.sinProcesar()) {
+        const estirador = this.estiradores[p];
+        estirador.clear();
+        estirador.inputBuffer.clear();
+        estirador.outputBuffer.clear();
+      }
+    }
+    this.posicionDeCambio = this.posicion + pendientes * this.velocidadSalida;
   }
 
   private buscarPulso(): void {
@@ -270,8 +351,14 @@ class ProcesadorFalab extends AudioWorkletProcessor {
 
   /** Lee un bloque de todas las pistas y lo deja listo en sus colas. False si hay que esperar. */
   private alimentar(directo: boolean): boolean {
+    if (this.siguiente && !this.bucle && this.lectura >= this.finLectura) {
+      this.empezarALeerLaSiguiente(directo);
+      directo = this.sinProcesar();
+    }
     let n = BLOQUE;
     if (this.bucle && this.lectura < this.bucle.fin) n = Math.min(n, this.bucle.fin - this.lectura);
+    // Con una canción encolada se lee justo hasta el final, para empalmar en la muestra exacta.
+    else if (this.siguiente && this.lectura < this.finLectura) n = Math.min(n, this.finLectura - this.lectura);
     const pistas = this.pistas.length;
     for (let p = 0; p < pistas; p++) {
       if (!this.leer(this.pistas[p], this.lectura, n, this.temporales[p])) return false;
@@ -355,27 +442,29 @@ class ProcesadorFalab extends AudioWorkletProcessor {
     }
 
     if (this.estado === "reproduciendo") {
-      const directo = this.sinProcesar();
-      const pistas = this.pistas.length;
       let intentos = 0;
       let faltan = true;
       this.esperando = false;
       while (intentos++ < MAX_ALIMENTACIONES) {
         faltan = false;
-        for (let p = 0; p < pistas; p++) if (this.colas[p].frames < CUANTO) faltan = true;
+        for (let p = 0; p < this.pistas.length; p++) if (this.colas[p].frames < CUANTO) faltan = true;
         if (!faltan) break;
-        if (!this.alimentar(directo)) {
+        if (!this.alimentar(this.sinProcesar())) {
           this.esperando = true;
           break;
         }
       }
-      if (!faltan || pistas === 0) {
-        for (let p = 0; p < pistas; p++) this.colas[p].sacar(salidas[p][0], salidas[p][1], CUANTO);
-        const avance = CUANTO * (directo ? 1 : this.velocidad);
+      if (!faltan || this.pistas.length === 0) {
+        // Durante un cambio de canción aún pueden quedar pistas de la anterior terminando de sonar.
+        const sonando = Math.max(this.pistas.length, this.actual ? this.actual.pistas.length : 0);
+        for (let p = 0; p < sonando; p++) {
+          if (this.colas[p].frames >= CUANTO) this.colas[p].sacar(salidas[p][0], salidas[p][1], CUANTO);
+        }
+        const avance = CUANTO * this.velocidadSalida;
         if (this.metronomo) {
           const hasta = this.posicion + avance;
           while (this.siguientePulso < this.pulsos.length && this.pulsos[this.siguientePulso] < hasta) {
-            const retardo = (this.pulsos[this.siguientePulso] - this.posicion) / (avance / CUANTO);
+            const retardo = (this.pulsos[this.siguientePulso] - this.posicion) / this.velocidadSalida;
             this.programarClic(retardo, this.fuertes[this.siguientePulso] === 1);
             this.siguientePulso++;
           }
@@ -384,7 +473,19 @@ class ProcesadorFalab extends AudioWorkletProcessor {
         if (this.bucle && this.posicion >= this.bucle.fin) {
           this.posicion = this.bucle.inicio + (this.posicion - this.bucle.fin);
           this.buscarPulso();
-        } else if (this.posicion >= this.fin) {
+        } else if (this.enTransito && this.posicion >= this.posicionDeCambio) {
+          // Momento 2 del cambio: el oyente entra en la canción nueva.
+          this.posicion = (this.posicion - this.posicionDeCambio) * (this.enTransito.velocidad / this.velocidadSalida);
+          this.fin = this.enTransito.fin;
+          this.pulsos = this.enTransito.pulsos;
+          this.fuertes = this.enTransito.fuertes;
+          this.velocidadSalida = this.enTransito.velocidad;
+          this.enTransito = null;
+          this.actual = null;
+          this.buscarPulso();
+          this.enviar({ tipo: "cambio" });
+          this.informar();
+        } else if (this.posicion >= this.fin && !this.enTransito) {
           this.estado = "detenido";
           this.resincronizar(0);
           this.informar();

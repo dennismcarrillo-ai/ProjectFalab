@@ -94,7 +94,7 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .editor { flex: 1; overflow: auto; position: relative; background: #0d0f10; overscroll-behavior: none; }
 .lienzo { position: relative; min-height: 100%; }
 .fila { display: flex; position: relative; }
-.fila-regla { position: sticky; top: 0; z-index: 30; height: 50px; background: var(--panel); border-bottom: 1px solid var(--borde); }
+.fila-regla { position: sticky; top: 0; z-index: 30; height: 70px; background: var(--panel); border-bottom: 1px solid var(--borde); }
 .esquina {
   position: sticky; left: 0; z-index: 31; flex: 0 0 var(--ancho-cabecera); width: var(--ancho-cabecera);
   background: var(--panel); border-right: 1px solid var(--borde); display: flex; align-items: center;
@@ -103,7 +103,7 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .carril { position: relative; flex: 0 0 auto; }
 .carril canvas { position: sticky; left: var(--ancho-cabecera); display: block; pointer-events: none; }
 .regla { cursor: text; }
-.acordes-carril { position: absolute; left: 0; right: 0; top: 26px; height: 22px; pointer-events: none; }
+.acordes-carril { position: absolute; left: 0; right: 0; top: 46px; height: 22px; pointer-events: none; }
 .acorde-marca {
   position: absolute; top: 2px; height: 18px; padding: 0 5px; border-left: 2px solid var(--menta-oscuro);
   font: 600 11.5px var(--mono); color: var(--menta); white-space: nowrap; overflow: hidden;
@@ -302,3 +302,11 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .acorde-caja.actual.vacio .nombre { color: var(--tenue); }
 .acorde-caja .barra { width: 100%; height: 5px; border-radius: 3px; background: rgba(255,255,255,.10); overflow: hidden; }
 .acorde-caja .barra > span { display: block; height: 100%; background: var(--menta); }
+
+/* ---------- directo: marcadores de ensayo ---------- */
+.secciones-carril { position: absolute; left: 0; right: 0; top: 26px; height: 19px; pointer-events: none; }
+.seccion-marca {
+  position: absolute; top: 1px; height: 17px; padding: 0 6px; border-radius: 4px; overflow: hidden; white-space: nowrap;
+  font-size: 10.5px; font-weight: 700; line-height: 17px; color: #0b1012; opacity: .92;
+}
+.seccion-actual { font-size: 18px; min-height: 26px; letter-spacing: .02em; }
