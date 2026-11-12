@@ -86,7 +86,7 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (25 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (24 pruebas automáticas) |
 | Edición, EQ, reproductor y orden de playlists | Probado (35 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
 | Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
