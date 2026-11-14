@@ -8,6 +8,7 @@ AFINACIONES = {
     "guitarra": ([40, 45, 50, 55, 59, 64], ["E", "A", "D", "G", "B", "e"]),
     "bajo": ([28, 33, 38, 43], ["E", "A", "D", "G"]),
 }
+AFINACIONES["guitarra_solista"] = AFINACIONES["guitarra"]
 TRASTE_MAXIMO = 17
 COMPASES_POR_LINEA = 2
 

@@ -5,8 +5,9 @@ from pathlib import Path
 
 from .cuantizacion import agrupar
 
-NOMBRES_PISTA = {"voz": "Voz", "bajo": "Bajo", "guitarra": "Guitarra", "piano": "Piano", "otros": "Otros"}
-PROGRAMAS_MIDI = {"voz": 53, "bajo": 33, "guitarra": 25, "piano": 0, "otros": 48}
+NOMBRES_PISTA = {"voz": "Voz", "bajo": "Bajo", "guitarra": "Guitarra", "guitarra_solista": "Guitarra solista",
+                 "piano": "Piano", "otros": "Otros"}
+PROGRAMAS_MIDI = {"voz": 53, "bajo": 33, "guitarra": 25, "guitarra_solista": 29, "piano": 0, "otros": 48}
 
 
 def a_musicxml(notas_por_pista: dict[str, list[dict]], mapa_tempo: dict, titulo: str,
@@ -31,7 +32,7 @@ def a_musicxml(notas_por_pista: dict[str, list[dict]], mapa_tempo: dict, titulo:
             parte.insert(0, key.Key(nombres[tonalidad.get("tonica", 0)], modo))
         if id_pista == "bajo":
             parte.insert(0, clef.BassClef())
-        elif id_pista == "guitarra":
+        elif id_pista in ("guitarra", "guitarra_solista"):
             parte.insert(0, clef.Treble8vbClef())
         elif id_pista == "voz":
             parte.insert(0, clef.TrebleClef())

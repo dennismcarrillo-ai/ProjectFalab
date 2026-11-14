@@ -99,8 +99,11 @@ actualizan sin volver a renderizar React.
 archivo (MP3, WAV, FLAC, OGG, AAC, MP4, MOV, MKV)
    │ FFmpeg → mezcla.flac (44,1 kHz, estéreo, 24 bits)
    ▼
+0. Pre-análisis (opcional)      → Demucs sobre 3 extractos; propone pistas     preanalisis.py
 1. Demucs v4 (htdemucs_6s)      → voz, bajo, batería, guitarra, piano, otros   separacion.py
 2. Anti-bleed bajo/bombo        → reparte graves entre bajo y batería          anti_bleed.py
+2b. Selección y divisiones      → lo no elegido va a «otros»; coros y           division.py
+                                  guitarra solista por centro/lados
 3. librosa: mapa de pulsos      → instante y BPM local de cada pulso           mapa_tempo.py
 4. BasicPitch: audio → MIDI     → notas por stem                               notas.py
    Cifrado de acordes           → estándar, jazz o latino; inversiones         acordes.py

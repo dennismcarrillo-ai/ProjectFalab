@@ -2,6 +2,7 @@ node_modules/
 dist/
 target/
 .venv/
+.venv-coros/
 __pycache__/
 *.pyc
 .pytest_cache/

@@ -241,11 +241,25 @@ export interface Salud {
   estado: string;
   version: string;
   carpetaDatos: string;
-  componentes: { ffmpeg: boolean; rubberband: boolean; demucs: boolean; basicPitch: boolean; whisper: boolean };
+  componentes: {
+    ffmpeg: boolean; rubberband: boolean; demucs: boolean; basicPitch: boolean; whisper: boolean; corosNeuronal?: boolean;
+  };
 }
 
 /** Fragmentos copiados: referencias a audio, nunca muestras. */
 export interface Portapapeles {
   duracion: number;
   fragmentos: (Omit<Clip, "id" | "inicio"> & { relativo: number })[];
+}
+
+/** Resultado de escuchar tres extractos de la canción antes de procesarla. */
+export interface Preanalisis {
+  /** false si Demucs no está instalado (no se pudo escuchar nada). */
+  disponible: boolean;
+  duracion: number;
+  tieneVideo: boolean;
+  corosNeuronal: boolean;
+  instrumentos?: Record<string, { nivelDb: number; presente: boolean }>;
+  coros?: { anchuraDb: number | null; sugerido: boolean };
+  guitarras?: { anchuraDb: number | null; sugerido: boolean };
 }

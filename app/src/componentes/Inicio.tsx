@@ -9,7 +9,7 @@ const EXTENSIONES = ["mp3", "wav", "flac", "ogg", "aac", "m4a", "mp4", "mov", "m
 /** Pantalla de inicio: importar una canción o un video y abrir proyectos anteriores. */
 export function Inicio() {
   const salud = usarApp((s) => s.salud);
-  const { importar, crearDemo, fijar } = usarApp.getState();
+  const { prepararImportacion: importar, crearDemo, fijar } = usarApp.getState();
   const [encima, fijarEncima] = useState(false);
   const [opciones, fijarOpciones] = useState<OpcionesImportar>({
     separar: true, antiBleed: true, extraerNotas: true, transcribirLetras: true, calidadLetras: "equilibrado", idioma: null,

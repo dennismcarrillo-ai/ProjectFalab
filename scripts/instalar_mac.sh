@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Instalación de falab en macOS (Apple Silicon o Intel).
-# Uso:  ./scripts/instalar_mac.sh            -> todo (motor + modelos de IA + interfaz)
-#       ./scripts/instalar_mac.sh --sin-ia   -> sin Demucs/Whisper/BasicPitch (para probar la interfaz)
+# Uso:  ./scripts/instalar_mac.sh              -> todo (motor + modelos de IA + interfaz)
+#       ./scripts/instalar_mac.sh --sin-ia     -> sin Demucs/Whisper/BasicPitch (para probar la interfaz)
+#       ./scripts/instalar_mac.sh --con-coros  -> añade el separador neuronal de coros (opcional, ~2 GB)
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 CON_IA=1
-[[ "${1:-}" == "--sin-ia" ]] && CON_IA=0
+CON_COROS=0
+for opcion in "$@"; do
+  [[ "$opcion" == "--sin-ia" ]] && CON_IA=0
+  [[ "$opcion" == "--con-coros" ]] && CON_COROS=1
+done
 
 echo "==> 1/5 Herramientas del sistema"
 # En Apple Silicon, Homebrew vive en /opt/homebrew y no siempre está en el PATH de la terminal.
@@ -36,6 +41,13 @@ if [[ $CON_IA -eq 1 ]]; then
   uv pip install --python .venv/bin/python -e ".[ia,dev]"
 else
   uv pip install --python .venv/bin/python -e ".[dev]"
+fi
+
+if [[ $CON_COROS -eq 1 ]]; then
+  echo "    Instalando el separador neuronal de coros en un entorno aparte…"
+  # Entorno propio: necesita versiones de PyTorch incompatibles con las de Demucs.
+  uv venv --python 3.11 .venv-coros
+  uv pip install --python .venv-coros/bin/python "audio-separator[cpu]"
 fi
 
 echo "==> 3/5 Registro de la ruta del motor"

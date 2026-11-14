@@ -54,7 +54,7 @@ def sintetizar(vueltas: int = 4) -> tuple[dict[str, np.ndarray], dict]:
     pulso = 60.0 / BPM
     compases = vueltas * len(PROGRESION)
     frames = int((compases * 4 * pulso + 1.0) * FS)
-    stems = {s: np.zeros(frames, dtype=np.float32) for s in config.ORDEN_PISTAS}
+    stems = {s: np.zeros(frames, dtype=np.float32) for s in config.STEMS_DEMUCS}
     segmentos = []
     for compas in range(compases):
         _, notas, grave = PROGRESION[compas % len(PROGRESION)]

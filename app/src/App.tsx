@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Aviso, DialogoDrive, DialogoExportar, Progreso } from "./componentes/Dialogos";
 import { DialogoEstructura, DialogoPedal } from "./componentes/Directo";
+import { DialogoPreanalisis } from "./componentes/Preanalisis";
 import { Biblioteca } from "./componentes/Biblioteca";
 import { Editor } from "./componentes/Editor";
 import { Inicio } from "./componentes/Inicio";
@@ -181,6 +182,7 @@ export function App() {
       {dialogo === "drive" && <DialogoDrive />}
       {dialogo === "estructura" && proyecto && <DialogoEstructura />}
       {dialogo === "pedal" && <DialogoPedal />}
+      {dialogo === "preanalisis" && <DialogoPreanalisis />}
       {dialogo === "grabacion" && <DialogoGrabacion />}
       {proyecto && ventanaVideo && !vistaPrevia && <VentanaVideo />}
       {vistaPrevia && <VistaPreviaDeCamara flujo={vistaPrevia} />}

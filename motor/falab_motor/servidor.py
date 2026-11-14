@@ -17,6 +17,7 @@ from . import (__version__, biblioteca, config, drive, edicion_letras, guias, me
 from .exportacion import cancionero
 from .exportacion.exportar import exportar
 from .pipeline import acordes as modulo_acordes
+from .pipeline import division, preanalisis
 from .pipeline import estructura as modulo_estructura
 from .pipeline import orquestador
 from .trabajos import GestorTrabajos
@@ -62,6 +63,7 @@ def _componentes() -> dict:
         "demucs": find_spec("demucs") is not None,
         "basicPitch": find_spec("basic_pitch") is not None,
         "whisper": find_spec("mlx_whisper") is not None or find_spec("faster_whisper") is not None,
+        "corosNeuronal": division.ejecutable_neuronal() is not None,
     }
 
 
@@ -86,6 +88,25 @@ def importar(cuerpo: dict = Body(...)) -> dict:
         raise HTTPException(400, "Falta la ruta del archivo.")
     opciones = cuerpo.get("opciones") or {}
     return trabajos.lanzar("importar", lambda t: orquestador.importar(Path(ruta), opciones, t)).a_dict()
+
+
+@app.post("/preanalisis")
+def lanzar_preanalisis(cuerpo: dict = Body(...)) -> dict:
+    """Escucha tres extractos de la canción y propone qué pistas separar."""
+    if not cuerpo.get("ruta"):
+        raise HTTPException(400, "Falta la ruta del archivo.")
+    return trabajos.lanzar("preanalisis", lambda t: preanalisis.preanalizar(Path(cuerpo["ruta"]), t)).a_dict()
+
+
+@app.post("/subir-temporal")
+async def subir_temporal(archivo: UploadFile = File(...)) -> dict:
+    """Guarda en disco un archivo elegido en un navegador y devuelve su ruta (para pre-analizarlo e importarlo)."""
+    nombre = re.sub(r"[^\w\-. ]+", "_", Path(archivo.filename or "audio").name)
+    destino = config.DIR_DATOS / "importados" / nombre
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    with open(destino, "wb") as salida:
+        shutil.copyfileobj(archivo.file, salida)
+    return {"ruta": str(destino)}
 
 
 @app.post("/proyectos/subir")

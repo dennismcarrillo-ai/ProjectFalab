@@ -125,6 +125,6 @@ export function VisorPartitura({ instrumento, modo, escala = 1 }: { instrumento:
 }
 
 export const NOMBRES_INSTRUMENTO: Record<string, string> = {
-  voz: "Voz", bajo: "Bajo", guitarra: "Guitarra", piano: "Piano", otros: "Otros",
+  voz: "Voz", bajo: "Bajo", guitarra: "Guitarra", guitarra_solista: "Guitarra solista", piano: "Piano", otros: "Otros",
 };
-export const CON_TRASTES = ["bajo", "guitarra"];
+export const CON_TRASTES = ["bajo", "guitarra", "guitarra_solista"];

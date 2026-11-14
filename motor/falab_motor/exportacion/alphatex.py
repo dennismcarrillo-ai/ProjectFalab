@@ -15,9 +15,10 @@ PASOS_POR_PULSO = 4  # semicorcheas
 # duración en semicorcheas -> (figura alphaTex, con puntillo)
 FIGURAS = {16: (1, False), 12: (2, True), 8: (2, False), 6: (4, True), 4: (4, False),
            3: (8, True), 2: (8, False), 1: (16, False)}
-NOMBRES = {"voz": "Voz", "bajo": "Bajo", "guitarra": "Guitarra", "piano": "Piano", "otros": "Otros"}
-PROGRAMAS = {"voz": 53, "bajo": 33, "guitarra": 25, "piano": 0, "otros": 48}
-AFINACION_TEX = {"guitarra": "E4 B3 G3 D3 A2 E2", "bajo": "G2 D2 A1 E1"}
+NOMBRES = {"voz": "Voz", "bajo": "Bajo", "guitarra": "Guitarra", "guitarra_solista": "Guitarra solista",
+           "piano": "Piano", "otros": "Otros"}
+PROGRAMAS = {"voz": 53, "bajo": 33, "guitarra": 25, "guitarra_solista": 29, "piano": 0, "otros": 48}
+AFINACION_TEX = {"guitarra": "E4 B3 G3 D3 A2 E2", "guitarra_solista": "E4 B3 G3 D3 A2 E2", "bajo": "G2 D2 A1 E1"}
 # Los instrumentos sin trastes se escriben sobre seis «cuerdas» ficticias afinadas en Do1:
 # el traste es simplemente la nota, y solo se muestra el pentagrama.
 CUERDA_FICTICIA = 24

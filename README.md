@@ -7,6 +7,9 @@ editar la mezcla** de cualquier canción o video. Todo el análisis de IA se eje
 no hay servidores ni coste por uso, y tu música no sale de tu ordenador.
 
 - **Separación** en voz, bajo, batería, guitarra, piano y otros (Meta Demucs v4).
+- **Pre-análisis**: antes de procesar, falab escucha tres fragmentos y propone qué pistas crear;
+  lo que no elijas se suma a «otros». Opcionalmente separa **coros** de la voz principal y, de
+  forma experimental, **guitarra rítmica** de **solista**.
 - **Anti-bleed** entre bajo y bombo.
 - **Metrónomo dinámico** que sigue las fluctuaciones de tempo de la grabación (librosa).
 - **Letra** con tiempos por palabra (Whisper) y **acordes** en cifrado estándar, jazz o latino
@@ -63,6 +66,18 @@ cd app && npm run tauri build
 La primera vez que analices una canción se descargan los pesos de los modelos; después todo
 funciona sin conexión. Para conectar Google Drive, sigue [docs/GOOGLE_DRIVE.md](docs/GOOGLE_DRIVE.md).
 
+### Separador neuronal de coros (opcional)
+
+El método incluido separa los coros por su posición en la mezcla. Si quieres probar un modelo
+neuronal, que también distingue coros mezclados al centro, instálalo aparte (ocupa unos 2 GB):
+
+```bash
+./scripts/instalar_mac.sh --con-coros
+```
+
+Se instala en un entorno propio (`motor/.venv-coros`) para no interferir con Demucs. Si falla al
+usarlo, falab vuelve solo al método incluido y te avisa.
+
 ### Probar la interfaz sin instalar los modelos
 
 ```bash
@@ -95,16 +110,18 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (30 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (35 pruebas automáticas) |
 | Edición, EQ, reproductor y orden de playlists | Probado (37 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
 | Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
 | Pedal MIDI y voz de las guías | La lógica está probada con mensajes y voz simulados; **pendiente de confirmar** con un pedal real y con la voz de macOS |
 | Grabación de micrófono y cámara, y video flotante | Probado en Chromium con dispositivos simulados; **pendiente de confirmar** en la app de macOS (permisos del sistema y acceso al video) |
+| Pre-análisis y división de coros y guitarras | Probado con un separador simulado; **pendiente de confirmar** con Demucs y música real. El separador neuronal de coros (`--con-coros`) no se ha ejecutado nunca |
 | Google Drive (subida, descarga y guardado automático) | La cola automática está probada con un Drive simulado; **pendiente de confirmar** contra Drive real |
 
 ## Limitaciones conocidas
 
+- La división de coros y de guitarras se basa en la posición estéreo: solo funciona si la voz principal o el solo están al centro y los coros o la rítmica a los lados. Con mezclas mono o todo al centro no separa nada (y avisa).
 - El stem de **piano** de `htdemucs_6s` es experimental en el propio Demucs y suele ser el menos limpio.
 - Partitura y tablatura son transcripciones automáticas: sirven de punto de partida, no de edición final.
 - El compás se detecta como 4/4; los cambios de compás se indican a mano por sección.

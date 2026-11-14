@@ -10,12 +10,12 @@ import {
 } from "../servicios/motor";
 import type {
   AccionPedal, Analisis, AsignacionPedal, Cifrado, Clip, DetalleAcordes, Disparador, Ecualizador, OrdenPlaylist,
-  Pista, Playlist, Portapapeles, Proyecto, ResumenProyecto, Salud, Seccion, Trabajo,
+  Pista, Playlist, Portapapeles, Preanalisis, Proyecto, ResumenProyecto, Salud, Seccion, Trabajo,
 } from "../tipos";
 import { desplazar, ordenar } from "../util/biblioteca";
 
 export type Vista = "editor" | "karaoke" | "cancionero" | "partitura";
-export type Dialogo = null | "exportar" | "drive" | "estructura" | "pedal" | "grabacion";
+export type Dialogo = null | "exportar" | "drive" | "estructura" | "pedal" | "grabacion" | "preanalisis";
 
 const CLAVE_GRABACION = "falab.grabacion";
 function leerOpcionesDeGrabacion(): OpcionesDeGrabacion {
@@ -89,6 +89,10 @@ interface EstadoApp {
   cerrar(): Promise<void>;
   eliminarProyecto(id: string): Promise<void>;
   importar(origen: string | File, opciones: OpcionesImportar): Promise<void>;
+  /** Canción escuchada y pendiente de que el usuario confirme qué pistas separar. */
+  importacion: null | { ruta: string; nombre: string; opciones: OpcionesImportar; previo: Preanalisis };
+  /** Escucha la canción y abre el diálogo de sugerencias; si no hay nada que proponer, importa sin más. */
+  prepararImportacion(origen: string | File, opciones: OpcionesImportar): Promise<void>;
   crearDemo(): Promise<void>;
   exportar(peticion: PeticionExportar): Promise<void>;
   ejecutar(titulo: string, lanzar: () => Promise<Trabajo>): Promise<Trabajo | null>;
@@ -429,6 +433,26 @@ export const usarApp = create<EstadoApp>((set, get) => {
     cancelarTrabajo() {
       const trabajo = get().trabajo;
       if (trabajo) void motor.cancelar(trabajo.id);
+    },
+
+    importacion: null,
+
+    async prepararImportacion(origen, opciones) {
+      const nombre = (typeof origen === "string" ? origen.split(/[\\/]/).pop() : origen.name) ?? "";
+      // Los proyectos exportados no se analizan; sin separación tampoco hay nada que proponer.
+      if (nombre.toLowerCase().endsWith(".falab") || !opciones.separar || !get().salud?.componentes.demucs) {
+        return get().importar(origen, opciones);
+      }
+      try {
+        const ruta = typeof origen === "string" ? origen : await motor.subirTemporal(origen);
+        const final = await get().ejecutar("Escuchando la canción", () => motor.preanalisis(ruta));
+        if (!final) return;
+        const previo = final.resultado as Preanalisis;
+        if (!previo.disponible) return get().importar(ruta, opciones);
+        set({ importacion: { ruta, nombre, opciones, previo }, dialogo: "preanalisis" });
+      } catch (error) {
+        set({ aviso: { texto: `No se pudo leer el archivo: ${(error as Error).message}`, tipo: "error" } });
+      }
     },
 
     async importar(origen, opciones) {

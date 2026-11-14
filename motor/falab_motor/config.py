@@ -29,7 +29,13 @@ STEMS = {
     "piano": ("piano", "Piano", "#38bdf8"),
     "other": ("otros", "Otros", "#5eead4"),
 }
-ORDEN_PISTAS = ["voz", "bajo", "bateria", "guitarra", "piano", "otros"]
+STEMS_DEMUCS = ["voz", "bajo", "bateria", "guitarra", "piano", "otros"]
+# Pistas que pueden resultar del análisis, en su orden de aparición (incluye las divisiones opcionales).
+ORDEN_PISTAS = ["voz", "coros", "bajo", "bateria", "guitarra", "guitarra_solista", "piano", "otros"]
+# id -> (nombre visible, color)
+PISTAS = {clave: (nombre, color) for clave, nombre, color in STEMS.values()}
+PISTAS["coros"] = ("Coros", "#f9a8d4")
+PISTAS["guitarra_solista"] = ("Guitarra solista", "#fde68a")
 
 EXTENSIONES_ADMITIDAS = {".mp3", ".wav", ".flac", ".ogg", ".aac", ".m4a", ".mp4", ".mov", ".mkv"}
 

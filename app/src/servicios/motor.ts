@@ -73,6 +73,10 @@ export interface OpcionesImportar {
   transcribirLetras: boolean;
   calidadLetras: "rapido" | "equilibrado" | "preciso";
   idioma: string | null;
+  /** Pistas que se quieren como propias (lo demás se suma a «otros»). Sin indicar: todas. */
+  pistas?: string[];
+  separarCoros?: boolean;
+  separarGuitarras?: boolean;
 }
 
 export interface PeticionExportar {
@@ -92,6 +96,15 @@ export const motor = {
   guardar: (p: Proyecto) => json<{ modificado: string }>("PUT", `/proyectos/${p.id}`, p),
   eliminar: (id: string) => json("DELETE", `/proyectos/${id}`),
   demo: () => json<Trabajo>("POST", "/proyectos/demo"),
+  preanalisis: (ruta: string) => json<Trabajo>("POST", "/preanalisis", { ruta }),
+  /** Solo en navegador: guarda el archivo en el disco del motor y devuelve su ruta. */
+  async subirTemporal(archivo: File): Promise<string> {
+    const formulario = new FormData();
+    formulario.append("archivo", archivo);
+    const respuesta = await fetch(URL_NAVEGADOR + "/subir-temporal", { method: "POST", body: formulario });
+    if (!respuesta.ok) throw new Error((await respuesta.json()).detail ?? "No se pudo subir el archivo.");
+    return (await respuesta.json()).ruta;
+  },
   biblioteca: () =>
     json<{ playlists: Playlist[]; ajustes: { driveAutomatico: boolean; pedal?: AsignacionPedal } }>("GET", "/biblioteca"),
   guardarEstructura: (id: string, secciones: Seccion[]) =>

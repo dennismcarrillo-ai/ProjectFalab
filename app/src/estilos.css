@@ -361,3 +361,8 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
   position: fixed; right: 18px; bottom: 60px; z-index: 70; width: 300px; border-radius: 12px; background: #000;
   border: 2px solid #ef4444; transform: scaleX(-1); box-shadow: 0 16px 40px rgba(0,0,0,.5);
 }
+
+/* ---------- fase 5: pre-análisis ---------- */
+.insignia { font-size: 10.5px; padding: 2px 8px; border-radius: 9px; background: var(--panel-3); color: var(--tenue); white-space: nowrap; }
+.insignia.sugerido { background: rgba(94,234,212,.16); color: var(--menta); }
+.insignia.experimental { background: rgba(251,191,36,.16); color: var(--ambar); margin-left: 6px; }

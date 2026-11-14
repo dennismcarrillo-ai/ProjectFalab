@@ -19,7 +19,7 @@ import numpy as np
 
 from .. import config, medios, proyecto as modelo
 from ..trabajos import Cancelado, Trabajo
-from . import acordes, anti_bleed, estructura, mapa_tempo
+from . import acordes, anti_bleed, division, estructura, mapa_tempo
 
 OPCIONES_POR_DEFECTO = {
     "separar": True,
@@ -29,9 +29,15 @@ OPCIONES_POR_DEFECTO = {
     "transcribirLetras": True,
     "calidadLetras": "equilibrado",
     "idioma": None,
+    # Pistas que el usuario quiere (None = todas). Lo no elegido se suma a «otros»: no se pierde audio.
+    "pistas": None,
+    "separarCoros": False,          # voz principal / coros
+    "separarGuitarras": False,      # guitarra rítmica / solista (experimental)
 }
+# Si los lados quedan por debajo de esto respecto al centro (o al revés), no hay nada que separar.
+MINIMO_PARA_DIVIDIR_DB = -26.0
 UMBRAL_STEM_VACIO_DB = -55.0
-STEMS_CON_NOTAS = ["voz", "bajo", "guitarra", "piano", "otros"]
+STEMS_CON_NOTAS = ["voz", "bajo", "guitarra", "guitarra_solista", "piano", "otros"]
 
 
 def importar(ruta_medio: Path, opciones: dict, trabajo: Trabajo) -> dict:
@@ -95,7 +101,24 @@ def _ejecutar(p: dict, carpeta: Path, ruta_medio: Path, opciones: dict, trabajo:
         intentar("Filtro anti-bleed", lambda: anti_bleed.aplicar_a_archivos(
             stems["bajo"], stems["bateria"], intensidad=float(opciones["intensidadAntiBleed"])))
 
+    # 2b · Solo las pistas pedidas, y divisiones opcionales (coros, guitarra solista).
+    if stems:
+        trabajo.informar(0.58, "Organizando las pistas")
+        intentar("Selección de pistas", lambda: fusionar_no_elegidas(stems, opciones.get("pistas")))
+        if opciones["separarCoros"] and "voz" in stems:
+            aviso = intentar("Separación de coros", lambda: dividir_voz(stems, carpeta / "stems"))
+            if aviso:
+                avisos.append(aviso)
+        if opciones["separarGuitarras"] and "guitarra" in stems:
+            aviso = intentar("Separación de guitarras", lambda: dividir_guitarra(stems, carpeta / "stems"))
+            if aviso:
+                avisos.append(aviso)
+
     construir_pistas(p, carpeta, stems, mezcla)
+    if "guitarra_solista" in stems:
+        next(x for x in p["pistas"] if x["id"] == "guitarra")["nombre"] = "Guitarra rítmica"
+    if "coros" in stems:
+        next(x for x in p["pistas"] if x["id"] == "voz")["nombre"] = "Voz principal"
 
     # 3 · Mapa de pulsos (sobre la batería si existe: sus transitorios son los más limpios).
     trabajo.informar(0.62, "Analizando el tempo")
@@ -154,8 +177,7 @@ def construir_pistas(p: dict, carpeta: Path, stems: dict[str, Path], mezcla: Pat
     """Crea fuentes, pistas y picos de onda. Sin stems, el proyecto tiene una sola pista de mezcla."""
     p["fuentes"], p["pistas"] = [], []
     if stems:
-        nombres = {clave: (nombre, color) for clave, nombre, color in config.STEMS.values()}
-        entradas = [(s, *nombres[s], stems[s]) for s in config.ORDEN_PISTAS if s in stems]
+        entradas = [(s, *config.PISTAS[s], stems[s]) for s in config.ORDEN_PISTAS if s in stems]
     else:
         entradas = [("mezcla", "Mezcla", "#5eead4", mezcla)]
     for id_pista, nombre, color, ruta in entradas:
@@ -164,6 +186,68 @@ def construir_pistas(p: dict, carpeta: Path, stems: dict[str, Path], mezcla: Pat
                              "frames": frames, "canales": 2})
         medios.calcular_picos(ruta, carpeta / "picos" / f"{id_pista}.bin")
         p["pistas"].append(modelo.nueva_pista(id_pista, nombre, color, frames))
+
+
+def fusionar_no_elegidas(stems: dict[str, Path], elegidas: list[str] | None) -> None:
+    """Suma a «otros» los stems que el usuario no quiere como pista propia y los quita de la lista."""
+    if not elegidas:
+        return
+    sobrantes = [s for s in stems if s not in elegidas and s != "otros"]
+    if not sobrantes:
+        return
+    resto = medios.leer_audio(stems["otros"]) if "otros" in stems else None
+    for id_stem in sobrantes:
+        onda = medios.leer_audio(stems[id_stem])
+        resto = onda if resto is None else resto[: len(onda)] + onda[: len(resto)]
+        stems[id_stem].unlink(missing_ok=True)
+        del stems[id_stem]
+    destino = stems.get("otros") or next(iter(stems.values()), None)
+    if destino is None:   # no quedaba ninguna pista: todo va a «otros»
+        raise ValueError("Hay que elegir al menos una pista.")
+    stems["otros"] = stems.get("otros") or destino.with_name("otros.flac")
+    medios.escribir_flac(stems["otros"], resto)
+
+
+def _dividir(stems: dict[str, Path], origen: str, id_centro: str, id_lados: str, dir_stems: Path) -> float | None:
+    """Divide un stem en centro y lados. Devuelve la relación en dB, o None si no merecía la pena."""
+    temporal_centro, temporal_lados = dir_stems / "_centro.flac", dir_stems / "_lados.flac"
+    relacion = division.dividir_archivo(stems[origen], temporal_centro, temporal_lados)
+    if not (MINIMO_PARA_DIVIDIR_DB < relacion < -MINIMO_PARA_DIVIDIR_DB):
+        temporal_centro.unlink(missing_ok=True)
+        temporal_lados.unlink(missing_ok=True)
+        return None
+    stems[origen].unlink(missing_ok=True)
+    del stems[origen]
+    for id_stem, temporal in ((id_centro, temporal_centro), (id_lados, temporal_lados)):
+        stems[id_stem] = dir_stems / f"{id_stem}.flac"
+        temporal.replace(stems[id_stem])
+    return relacion
+
+
+def dividir_voz(stems: dict[str, Path], dir_stems: Path) -> str | None:
+    """Voz principal + coros. Devuelve un aviso si no se pudo o si se usó el método de reserva."""
+    if division.ejecutable_neuronal() is not None:
+        try:
+            principal, coros = dir_stems / "_principal.flac", dir_stems / "coros.flac"
+            division.dividir_voz_neuronal(stems["voz"], principal, coros)
+            principal.replace(stems["voz"])
+            stems["coros"] = coros
+            return None
+        except Exception as error:  # noqa: BLE001 - se sigue con el método incluido
+            aviso = f"El separador neuronal de coros falló ({error}); se usó la separación por posición estéreo."
+            if _dividir(stems, "voz", "voz", "coros", dir_stems) is None:
+                return aviso + " No se encontraron coros separables."
+            return aviso
+    if _dividir(stems, "voz", "voz", "coros", dir_stems) is None:
+        return "No se encontraron coros separables: la voz está mezclada casi entera al centro."
+    return None
+
+
+def dividir_guitarra(stems: dict[str, Path], dir_stems: Path) -> str | None:
+    """Guitarra solista (centro) + rítmica (lados). Experimental."""
+    if _dividir(stems, "guitarra", "guitarra_solista", "guitarra", dir_stems) is None:
+        return "No se pudo distinguir guitarra rítmica de solista: no ocupan posiciones distintas en la mezcla."
+    return None
 
 
 def _acordes(notas: dict, stems: dict[str, Path], mezcla: Path, mapa: dict, duracion: float,
