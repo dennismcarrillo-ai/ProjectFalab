@@ -160,3 +160,24 @@ def test_si_no_hay_nada_que_dividir_se_avisa_y_se_deja_el_stem(carpeta_de_datos,
     aviso = orquestador.dividir_voz(stems, stems_dir)
     assert "No se encontraron coros" in aviso and list(stems) == ["voz"]
     assert sorted(p.name for p in stems_dir.iterdir()) == ["voz.flac"]
+
+
+def test_preanalisis_con_duracion_declarada_erronea_y_audio_corto(carpeta_de_datos, tmp_path, monkeypatch):
+    """Los extractos se cortan sobre el audio real, aunque el archivo declare otra duración."""
+    from falab_motor import medios
+    from falab_motor.trabajos import Trabajo
+
+    _demucs_simulado(monkeypatch)
+    entrada = tmp_path / "corta.wav"
+    sf.write(str(entrada), _tono(300, 4.0), FS)
+    real = medios.sondear
+    # El contenedor dice 10 minutos, pero solo hay 4 segundos de audio.
+    monkeypatch.setattr(medios, "sondear", lambda ruta: {**real(ruta), "duracion": 600.0})
+    r = preanalisis.preanalizar(entrada, Trabajo(id="t", tipo="preanalisis"))
+    assert r["disponible"] and abs(r["duracion"] - 4.0) < 0.05 and r["instrumentos"]["voz"]["presente"]
+
+    diminuta = tmp_path / "diminuta.wav"
+    sf.write(str(diminuta), _tono(300, 0.2), FS)
+    import pytest
+    with pytest.raises(ValueError, match="demasiado corto"):
+        preanalisis.preanalizar(diminuta, Trabajo(id="t", tipo="preanalisis"))

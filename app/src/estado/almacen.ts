@@ -445,8 +445,16 @@ export const usarApp = create<EstadoApp>((set, get) => {
       }
       try {
         const ruta = typeof origen === "string" ? origen : await motor.subirTemporal(origen);
-        const final = await get().ejecutar("Escuchando la canción", () => motor.preanalisis(ruta));
-        if (!final) return;
+        // El pre-análisis es una ayuda: si falla, la canción se procesa igualmente con todas las pistas.
+        let final: Trabajo;
+        try {
+          final = await seguirTrabajo(await motor.preanalisis(ruta), (t) => set({ trabajo: { ...t, titulo: "Escuchando la canción" } }));
+        } catch {
+          set({ trabajo: null });
+          return get().importar(ruta, opciones);
+        }
+        set({ trabajo: null });
+        if (final.estado !== "completado") return; // cancelado por el usuario
         const previo = final.resultado as Preanalisis;
         if (!previo.disponible) return get().importar(ruta, opciones);
         set({ importacion: { ruta, nombre, opciones, previo }, dialogo: "preanalisis" });

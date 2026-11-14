@@ -80,19 +80,27 @@ def preanalizar(ruta_medio: Path, trabajo: Trabajo) -> dict:
 
     with tempfile.TemporaryDirectory() as carpeta_temporal:
         carpeta = Path(carpeta_temporal)
-        # Un único archivo con los tres extractos seguidos: una sola pasada de Demucs.
-        duracion = max(info["duracion"], 1.0)
-        tramo = min(SEGUNDOS_POR_EXTRACTO, duracion / 3)
+        # Se decodifica el audio entero una vez (igual que al importar) y los extractos se cortan
+        # contando muestras reales. No se usa la duración que declara el archivo ni los saltos de
+        # FFmpeg: en MP3 y en videos esa duración es a menudo aproximada y el corte salía vacío.
+        trabajo.informar(0.05, "Leyendo el audio")
+        completo = carpeta / "completo.flac"
+        medios.extraer_audio(ruta_medio, completo)
         partes = []
-        for i, fraccion in enumerate(POSICIONES):
-            trabajo.informar(0.05 + 0.1 * i, "Tomando extractos de la canción")
-            parte = carpeta / f"extracto_{i}.flac"
-            inicio = max(0.0, fraccion * duracion - tramo / 2)
-            medios.ejecutar_ffmpeg(["-ss", f"{inicio:.2f}", "-t", f"{tramo:.2f}", "-i", str(ruta_medio), "-vn",
-                                    "-map", "0:a:0", "-ac", "2", "-ar", str(config.FRECUENCIA), str(parte)])
-            partes.append(sf.read(str(parte), dtype="float32", always_2d=True)[0])
+        with sf.SoundFile(str(completo)) as archivo:
+            frames = archivo.frames
+            if frames < config.FRECUENCIA:
+                raise ValueError("El audio es demasiado corto para analizarlo.")
+            tramo = min(SEGUNDOS_POR_EXTRACTO * config.FRECUENCIA, frames // 3)
+            for fraccion in POSICIONES:
+                inicio = int(min(max(0, fraccion * frames - tramo / 2), frames - tramo))
+                archivo.seek(inicio)
+                parte = archivo.read(tramo, dtype="float32", always_2d=True)
+                partes.append(medios.a_estereo(parte))
+        base["duracion"] = frames / config.FRECUENCIA   # la duración real, no la declarada
         extractos = carpeta / "extractos.flac"
         medios.escribir_flac(extractos, np.concatenate(partes))
+        completo.unlink()
         rutas = separacion.separar(extractos, carpeta / "stems",
                                    progreso=trabajo.subetapa(0.35, 0.9, "Escuchando qué instrumentos hay"))
         stems = {id_stem: sf.read(str(ruta), dtype="float32", always_2d=True)[0] for id_stem, ruta in rutas.items()}
