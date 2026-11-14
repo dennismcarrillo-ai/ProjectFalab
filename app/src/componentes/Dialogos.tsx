@@ -48,9 +48,15 @@ export function DialogoExportar() {
         </div>
         {fila("Mezcla editada", "Lo que estás oyendo: edición, EQ, volúmenes, velocidad y tono.", { tipo: "mezcla", formato })}
         {fila("Pistas separadas", "Un archivo por instrumento, con su edición y su mezcla.", { tipo: "pistas", formato })}
+        <h3>Video</h3>
         {fila("Video original con la nueva mezcla", proyecto.medioOriginal.tieneVideo
           ? "MP4 con la imagen original. Los cortes y movimientos de clips no se aplican a la imagen."
-          : "El archivo importado no tenía video.", { tipo: "video" }, proyecto.medioOriginal.tieneVideo)}
+          : "El archivo importado no tenía video.", { tipo: "video", video: "original" }, proyecto.medioOriginal.tieneVideo)}
+        {(proyecto.videos ?? []).map((toma) => (
+          <div key={toma.id}>
+            {fila(`${toma.nombre} con la nueva mezcla`, "MP4 con tu grabación de cámara y la mezcla completa.", { tipo: "video", video: toma.id })}
+          </div>
+        ))}
         <h3>Letra y acordes</h3>
         <div className="fila-opcion"><span className="descripcion">Cifrado</span><SelectorCifrado /></div>
         {fila("Cancionero en PDF", "Letra con los acordes encima, lista para imprimir.", { tipo: "cancionero", formato: "pdf", cifrado })}

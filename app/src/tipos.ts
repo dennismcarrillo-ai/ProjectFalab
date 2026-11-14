@@ -40,8 +40,19 @@ export interface Pista {
   solo: boolean;
   /** Transposición propia de la pista, en semitonos (se suma a la global). */
   tono: number;
+  /** Envío a la reverb, de 0 (seca) a 1. */
+  reverb?: number;
   eq: Ecualizador;
   clips: Clip[];
+}
+
+/** Toma de video grabada con la cámara. */
+export interface TomaDeVideo {
+  id: string;
+  nombre: string;
+  archivo: string;
+  /** Instante de la canción en que empieza la imagen. */
+  inicio: number;
 }
 
 export interface Fuente {
@@ -81,6 +92,7 @@ export interface Proyecto {
   metronomo: Metronomo;
   fuentes: Fuente[];
   pistas: Pista[];
+  videos?: TomaDeVideo[];
   avisos: string[];
 }
 

@@ -17,6 +17,7 @@ import numpy as np
 import soundfile as sf
 from scipy import signal
 
+from .. import reverb
 from ..config import FRECUENCIA
 
 FUNDIDO_MINIMO = 0.003  # 3 ms en cada borde de clip para que los cortes no hagan «clic»
@@ -161,19 +162,32 @@ def renderizar(proyecto: dict, dir_proyecto: Path, *, por_pistas: bool = False,
 
     resultado: dict[str, np.ndarray] = {}
     mezcla = None if por_pistas else np.zeros((frames, 2), dtype=np.float32)
+    envio = None  # suma de lo que cada pista manda a la reverb (se crea solo si alguna la usa)
     for indice, pista in enumerate(pistas):
         onda = montar_pista(pista, proyecto, dir_proyecto, frames)
         onda = ecualizar(onda, pista["eq"])
         onda = panear(onda * db_a_lineal(pista["volumen"]), pista["paneo"])
+        cantidad = float(pista.get("reverb", 0.0))
         if por_pistas:
-            resultado[pista["id"]] = estirar_y_transponer(
-                onda, velocidad, tono_global + pista.get("tono", 0)) * maestro
+            seca = estirar_y_transponer(onda, velocidad, tono_global + pista.get("tono", 0))
+            if cantidad > 0:   # cada pista exportada lleva su propia reverb
+                seca = seca + reverb.aplicar(seca) * cantidad
+            resultado[pista["id"]] = seca * maestro
         else:
             # El tono propio de la pista se aplica antes de sumar; el global, una sola vez al final.
-            mezcla += estirar_y_transponer(onda, 1.0, pista.get("tono", 0))[:frames]
+            transpuesta = estirar_y_transponer(onda, 1.0, pista.get("tono", 0))[:frames]
+            mezcla += transpuesta
+            if cantidad > 0:
+                if envio is None:
+                    envio = np.zeros((frames, 2), dtype=np.float32)
+                envio += transpuesta * cantidad
         progreso((indice + 1) / (len(pistas) + 1))
     if not por_pistas:
-        resultado["mezcla"] = estirar_y_transponer(mezcla, velocidad, tono_global) * maestro
+        final = estirar_y_transponer(mezcla, velocidad, tono_global)
+        if envio is not None:
+            # Como en la app, la reverb actúa sobre el audio ya estirado (la sala no se estira).
+            final = final + reverb.aplicar(estirar_y_transponer(envio, velocidad, tono_global))[: len(final)]
+        resultado["mezcla"] = final * maestro
     # Protección contra saturación digital: si la suma supera 0 dBFS se baja todo por igual.
     pico = max((float(np.max(np.abs(o))) for o in resultado.values() if len(o)), default=0.0)
     if pico > 1.0:

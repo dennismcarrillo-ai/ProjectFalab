@@ -67,6 +67,18 @@ Para que la interfaz no se congele, alphaTab se carga solo al abrir la vista, di
 perezosa los sistemas visibles, y tanto el cursor como el carril de notas del karaoke se
 actualizan sin volver a renderizar React.
 
+## Grabación y video
+
+- **Micrófono.** El capturador es un segundo procesador del mismo AudioWorklet: comparte reloj de
+  muestras con el reproductor. Este avisa de la muestra exacta en que arranca la canción y la
+  toma se coloca ahí, restando la latencia de entrada y salida. El audio viaja al motor en trozos
+  de ~1 s que se escriben a disco al llegar.
+- **Reverb.** Una sola convolución compartida; cada pista decide cuánto le envía. La respuesta al
+  impulso la genera el motor y la usan tanto la app como la exportación, así que suenan igual.
+- **Video.** El elemento de video va silenciado y sigue al reloj de audio: desvíos pequeños se
+  corrigen variando un instante su velocidad y los grandes recolocándolo. Se reproduce una copia
+  ligera (720p, H.264) porque el WebView no admite todos los formatos.
+
 ## Decisiones tecnológicas
 
 | Decisión | Por qué |

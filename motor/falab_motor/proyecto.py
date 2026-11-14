@@ -57,6 +57,7 @@ def nueva_pista(id_pista: str, nombre: str, color: str, frames: int) -> dict:
         "silencio": False,
         "solo": False,
         "tono": 0,
+        "reverb": 0.0,
         "eq": eq_por_defecto(),
         "clips": [{
             "id": nuevo_id(),

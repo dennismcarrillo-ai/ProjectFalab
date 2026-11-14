@@ -4,6 +4,7 @@ import { FRAMES_FRAGMENTO, MAX_PISTAS, type MensajeAlProcesador, type MensajeDel
 
 const FS = 44100;
 let Procesador: new () => any;
+let Grabador: new () => any;
 
 beforeAll(async () => {
   const g = globalThis as any;
@@ -12,7 +13,11 @@ beforeAll(async () => {
     port = { postMessage: (m: MensajeDelProcesador) => this.recibidos.push(m), onmessage: null as any };
     recibidos: MensajeDelProcesador[] = [];
   };
-  g.registerProcessor = (_nombre: string, clase: any) => (Procesador = clase);
+  g.currentFrame = 0;
+  g.registerProcessor = (nombre: string, clase: any) => {
+    if (nombre === "falab-procesador") Procesador = clase;
+    else Grabador = clase;
+  };
   await import("./procesador.worklet");
 });
 
@@ -224,5 +229,43 @@ describe("procesador de audio", () => {
     correr(100);
     const despues = (p.recibidos as any[]).filter((m) => m.tipo === "posicion").pop().posicion;
     expect(despues - antes).toBeCloseTo(100 * 128 * 0.5, 0);                       // a la velocidad de la nueva
+  });
+
+  it("avisa del arranque con el reloj de muestras, después de la cuenta regresiva", () => {
+    const { p, enviar, correr } = crear(440, 4);
+    (globalThis as any).currentFrame = 5000;
+    enviar(reproducir(1000, 1)); // un clic de cuenta de 0,5 s
+    correr(100);
+    expect(p.recibidos.some((m: MensajeDelProcesador) => m.tipo === "arranque")).toBe(false);
+    (globalThis as any).currentFrame = 90000;
+    correr(100);
+    const arranques = p.recibidos.filter((m: MensajeDelProcesador) => m.tipo === "arranque");
+    expect(arranques).toEqual([{ tipo: "arranque", cuadro: 90000, posicion: 1000 }]);
+    (globalThis as any).currentFrame = 0;
+  });
+
+  it("el capturador entrega el micrófono en trozos de PCM de 16 bits con su reloj", () => {
+    const g = new Grabador();
+    const trozos: { cuadro: number; datos: Int16Array }[] = [];
+    g.port.postMessage = (m: any) => trozos.push(m);
+    (globalThis as any).currentFrame = 7000;
+    const izquierda = new Float32Array(128).fill(0.5), derecha = new Float32Array(128).fill(-0.25);
+    for (let i = 0; i < 400; i++) {            // 51200 frames: más de un trozo de ~1 s
+      expect(g.process([[izquierda, derecha]])).toBe(true);
+      (globalThis as any).currentFrame += 128;
+    }
+    expect(trozos).toHaveLength(1);
+    expect(trozos[0].cuadro).toBe(7000);
+    expect(trozos[0].datos.length % 2).toBe(0);
+    expect([trozos[0].datos[0], trozos[0].datos[1]]).toEqual([16384, -8192]);
+    // Micrófono mono: el mismo audio en los dos canales. Al parar se entrega lo pendiente.
+    g.process([[izquierda]]);
+    g.port.onmessage({ data: { tipo: "parar" } });
+    expect(trozos).toHaveLength(2);
+    const ultimo = trozos[1].datos;
+    expect([ultimo[ultimo.length - 2], ultimo[ultimo.length - 1]]).toEqual([16384, 16384]);
+    expect(trozos[1].cuadro).toBe(7000 + (trozos[0].datos.length / 2));
+    expect(g.process([[izquierda]])).toBe(false);   // tras parar, el procesador se libera
+    (globalThis as any).currentFrame = 0;
   });
 });

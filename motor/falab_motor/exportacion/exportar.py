@@ -49,13 +49,22 @@ def exportar(id_proyecto: str, peticion: dict, trabajo: Trabajo) -> dict:
                 onda, destino / f"{base} - {_nombre_seguro(nombres[id_pista])}", formato or "wav"))
 
     elif tipo == "video":
-        original = p.get("medioOriginal", {})
-        if not original.get("tieneVideo"):
-            raise ValueError("El archivo original de este proyecto no tiene video.")
+        # Se puede fusionar la mezcla con el video original o con una toma grabada con la cámara.
+        elegido = peticion.get("video", "original")
+        if elegido == "original":
+            original = p.get("medioOriginal", {})
+            if not original.get("tieneVideo"):
+                raise ValueError("El archivo original de este proyecto no tiene video.")
+            ruta_video, inicio_video, sufijo = Path(original["ruta"]), 0.0, "nueva mezcla"
+        else:
+            toma = next((v for v in p.get("videos", []) if v["id"] == elegido), None)
+            if toma is None:
+                raise ValueError("No existe esa toma de video.")
+            ruta_video, inicio_video, sufijo = carpeta / toma["archivo"], float(toma.get("inicio", 0.0)), toma["nombre"]
         onda = render.renderizar(p, carpeta, progreso=trabajo.subetapa(0.0, 0.6, "Renderizando la mezcla"))["mezcla"]
         trabajo.informar(0.65, "Montando el video")
-        salidas.append(archivos.escribir_video(Path(original["ruta"]), onda, destino / f"{base} (nueva mezcla)",
-                                               float(p.get("velocidad", 1.0))))
+        salidas.append(archivos.escribir_video(ruta_video, onda, destino / f"{base} ({sufijo})",
+                                               float(p.get("velocidad", 1.0)), inicio_video))
 
     elif tipo == "cancionero":
         trabajo.informar(0.2, "Componiendo el cancionero")

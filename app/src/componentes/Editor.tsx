@@ -10,9 +10,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { FRECUENCIA } from "../audio/protocolo";
 import { colocar, finDe, imantar, mover, recortarFin, recortarInicio, vecinos } from "../edicion/operaciones";
 import { duracionDe, usarApp, usarReproduccion } from "../estado/almacen";
+import { enEscritorio } from "../servicios/motor";
 import type { Clip, Pista, Proyecto, Pulso } from "../tipos";
 import { formatearDb, formatearTiempo } from "../util/formato";
-import { FRAMES_POR_PICO, usarPicos } from "../util/picos";
+import { FRAMES_POR_PICO, usarPicosDe } from "../util/picos";
 import { colorDeSeccion } from "./Directo";
 import { Inspector } from "./Inspector";
 import { PanelEq } from "./PanelEq";
@@ -155,17 +156,26 @@ function CabeceraPista({ pista }: { pista: Pista }) {
   const { ajustarPista, fijar } = usarApp.getState();
   const [ancla, fijarAncla] = useState<DOMRect | null>(null);
   const cerrar = useCallback(() => fijarAncla(null), []);
-  const eqModificado = pista.tono !== 0 || Object.values(pista.eq).some((b) => b.ganancia !== 0);
+  const eqModificado = pista.tono !== 0 || (pista.reverb ?? 0) > 0 || Object.values(pista.eq).some((b) => b.ganancia !== 0);
+  const propia = pista.instrumento === "extra" || pista.instrumento === "guias";
   return (
     <div className="cabecera-pista" onPointerDown={() => fijar({ pistaActiva: pista.id })}>
       <span className="color" style={{ background: pista.color }} />
       <div className="linea">
-        <span className="nombre">{pista.nombre}</span>
+        {pista.instrumento === "extra" ? (
+          <input className="nombre nombre-pista" defaultValue={pista.nombre} key={pista.nombre} aria-label="Nombre de la pista"
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }}
+            onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== pista.nombre && ajustarPista(pista.id, { nombre: e.target.value.trim() })} />
+        ) : <span className="nombre">{pista.nombre}</span>}
+        {propia && (
+          <button className="boton-mini" title="Eliminar esta pista" aria-label={`Eliminar la pista ${pista.nombre}`}
+            onClick={() => window.confirm(`¿Eliminar la pista «${pista.nombre}»?`) && usarApp.getState().eliminarPista(pista.id)}>✕</button>
+        )}
         <button className={`boton-mini silencio ${pista.silencio ? "activo" : ""}`} title="Silenciar" aria-pressed={pista.silencio}
           onClick={() => ajustarPista(pista.id, { silencio: !pista.silencio })}>M</button>
         <button className={`boton-mini solo ${pista.solo ? "activo" : ""}`} title="Solo" aria-pressed={pista.solo}
           onClick={() => ajustarPista(pista.id, { solo: !pista.solo })}>S</button>
-        <button className={`boton-mini eq ${eqModificado ? "modificado" : ""}`} title="Ecualizador de 3 bandas y tono de la pista"
+        <button className={`boton-mini eq ${eqModificado ? "modificado" : ""}`} title="Ecualizador de 3 bandas, reverb y tono de la pista"
           onClick={(e) => fijarAncla(ancla ? null : e.currentTarget.getBoundingClientRect())}>EQ</button>
       </div>
       <div className="linea" title="Volumen (doble clic: 0 dB)">
@@ -230,19 +240,17 @@ function FilaPista({ pista, proyecto, ventana, zoom, anchoTotal, pulsos }: {
   const activa = usarApp((s) => s.pistaActiva === pista.id);
   const seleccionados = usarApp((s) => s.clipsSeleccionados);
   const fuentes = useMemo(() => [...new Set(pista.clips.map((c) => c.fuenteId))], [pista.clips]);
-  // Una pista normalmente usa una sola fuente; se admiten hasta 2 distintas sin romper las reglas de hooks.
-  const picosA = usarPicos(proyecto.id, fuentes[0] ?? pista.id);
-  const picosB = usarPicos(proyecto.id, fuentes[1] ?? fuentes[0] ?? pista.id);
+  const picos = usarPicosDe(proyecto.id, fuentes);
+  const cargados = picos.size;
   const haySolo = proyecto.pistas.some((p) => p.solo);
   const atenuado = haySolo ? !pista.solo : pista.silencio;
 
   useEffect(() => {
     const c = prepararLienzo(ref.current!, ventana.ancho, ALTO_PISTA);
     for (const clip of pista.clips) {
-      const picos = clip.fuenteId === fuentes[0] ? picosA : clip.fuenteId === fuentes[1] ? picosB : null;
-      OndaDeClip({ c, clip, picos, ventana, zoom, color: pista.color, atenuado });
+      OndaDeClip({ c, clip, picos: picos.get(clip.fuenteId) ?? null, ventana, zoom, color: pista.color, atenuado });
     }
-  }, [pista.clips, pista.color, ventana, zoom, picosA, picosB, fuentes, atenuado]);
+  }, [pista.clips, pista.color, ventana, zoom, cargados, fuentes, atenuado]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const alPulsarClip = (e: React.PointerEvent, clip: Clip, modo: "mover" | "izquierda" | "derecha") => {
     e.stopPropagation();
@@ -359,7 +367,18 @@ export function Editor() {
   const tonalidad = usarApp((s) => s.analisis?.tonalidad.nombre);
   const pulsos = usarApp((s) => s.analisis?.mapaTempo.pulsos) ?? SIN_PULSOS;
   const refCaja = useRef<HTMLDivElement>(null);
+  const refArchivo = useRef<HTMLInputElement>(null);
   const [ventana, fijarVentana] = useState<Ventana>({ izquierda: 0, ancho: 800 });
+
+  const importarAudio = async () => {
+    if (!enEscritorio) {
+      refArchivo.current?.click();
+      return;
+    }
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const ruta = await open({ multiple: false, filters: [{ name: "Audio o MIDI", extensions: ["mp3", "wav", "flac", "ogg", "aac", "m4a", "mid", "midi", "mp4", "mov"] }] });
+    if (typeof ruta === "string") void usarApp.getState().importarEnPista(ruta);
+  };
 
   const duracion = Math.max(duracionDe(proyecto), proyecto.duracion) + 8;
   const anchoTotal = Math.ceil(duracion * zoom);
@@ -416,6 +435,18 @@ export function Editor() {
             <FilaPista key={pista.id} pista={pista} proyecto={proyecto} ventana={ventana} zoom={zoom}
               anchoTotal={anchoTotal} pulsos={pulsos} />
           ))}
+          <div className="fila fila-nueva-pista">
+            <div className="cabecera-pista" style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <button onClick={() => usarApp.getState().anadirPista()} title="Pista vacía para grabar en ella">＋ Pista</button>
+              <button onClick={() => void importarAudio()} title="Añadir un archivo de audio o MIDI en el cursor">＋ Audio o MIDI…</button>
+              <input ref={refArchivo} type="file" hidden accept=".mp3,.wav,.flac,.ogg,.aac,.m4a,.mid,.midi,.mp4,.mov"
+                onChange={(e) => {
+                  const archivo = e.target.files?.[0];
+                  if (archivo) void usarApp.getState().importarEnPista(archivo);
+                  e.target.value = "";
+                }} />
+            </div>
+          </div>
           {rango && (
             <div className={`rango ${bucle ? "bucle" : ""}`}
               style={{ left: ANCHO_CABECERA + rango.inicio * zoom, width: (rango.fin - rango.inicio) * zoom }} />

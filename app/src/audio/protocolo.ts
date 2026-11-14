@@ -56,6 +56,20 @@ export type EstadoTransporte = "detenido" | "cuenta" | "reproduciendo";
 export type MensajeDelProcesador =
   | { tipo: "posicion"; posicion: number; estado: EstadoTransporte; cuenta: number; esperando: boolean }
   | { tipo: "falta"; fuenteId: string; indice: number }
+  /**
+   * La reproducción acaba de arrancar (tras la cuenta regresiva, si la hay). `cuadro` es el
+   * reloj de muestras del contexto de audio: permite alinear una grabación con la canción.
+   */
+  | { tipo: "arranque"; cuadro: number; posicion: number }
   /** La canción encolada ha empezado a sonar. */
   | { tipo: "cambio" }
   | { tipo: "fin" };
+
+/** Mensajes del capturador de micrófono (segundo procesador del mismo AudioWorklet). */
+export type MensajeDelGrabador = {
+  tipo: "trozo";
+  /** Reloj de muestras del contexto en la primera muestra del trozo. */
+  cuadro: number;
+  /** PCM de 16 bits estéreo entrelazado. */
+  datos: Int16Array;
+};

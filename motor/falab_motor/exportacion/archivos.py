@@ -31,7 +31,8 @@ def escribir_audio(onda: np.ndarray, destino: Path, formato: str) -> Path:
     return destino
 
 
-def escribir_video(video_original: Path, onda: np.ndarray, destino: Path, velocidad: float = 1.0) -> Path:
+def escribir_video(video_original: Path, onda: np.ndarray, destino: Path, velocidad: float = 1.0,
+                   inicio_video: float = 0.0) -> Path:
     """Sustituye el audio del video original por la mezcla.
 
     A velocidad normal la imagen se copia sin recomprimir (rápido y sin pérdida). Si la mezcla
@@ -44,12 +45,16 @@ def escribir_video(video_original: Path, onda: np.ndarray, destino: Path, veloci
     with tempfile.TemporaryDirectory() as carpeta:
         temporal = Path(carpeta) / "mezcla.wav"
         sf.write(str(temporal), np.clip(onda, -1.0, 1.0), FRECUENCIA, subtype="PCM_24")
-        argumentos = ["-i", str(video_original), "-i", str(temporal), "-map", "0:v:0", "-map", "1:a:0"]
+        # Una toma de cámara puede empezar a mitad de canción: su imagen se retrasa ese tiempo.
+        retraso = ["-itsoffset", f"{inicio_video / max(velocidad, 1e-6):.4f}"] if inicio_video > 0.01 else []
+        argumentos = [*retraso, "-i", str(video_original), "-i", str(temporal), "-map", "0:v:0", "-map", "1:a:0"]
         if abs(velocidad - 1.0) < 1e-4:
             argumentos += ["-c:v", "copy"]
         else:
             argumentos += ["-filter:v", f"setpts=PTS/{velocidad:.6f}", "-c:v", "libx264", "-crf", "18",
                            "-preset", "medium", "-pix_fmt", "yuv420p"]
-        argumentos += ["-c:a", "aac", "-b:a", "320k", "-shortest", "-movflags", "+faststart", str(destino)]
+        # Con una toma de cámara (más corta que la canción) se conserva el audio completo.
+        argumentos += ["-c:a", "aac", "-b:a", "320k", *([] if retraso else ["-shortest"]),
+                       "-movflags", "+faststart", str(destino)]
         ejecutar_ffmpeg(argumentos)
     return destino

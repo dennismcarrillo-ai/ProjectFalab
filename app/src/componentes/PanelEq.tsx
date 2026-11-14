@@ -83,7 +83,7 @@ export function PanelEq({ pista, ancla, alCerrar }: { pista: Pista; ancla: DOMRe
     <div className="panel-eq" ref={ref} style={{ left: ancla.left, top: arriba }} onPointerDown={(e) => e.stopPropagation()} role="dialog" aria-label={`Ecualizador de ${pista.nombre}`}>
       <h4>
         <span style={{ width: 10, height: 10, borderRadius: 3, background: pista.color }} />
-        Ecualizador · {pista.nombre}
+        Ecualizador y efectos · {pista.nombre}
         <span className="crecer" />
         <button className="plano" onClick={() => restablecerEq(pista.id)}>Restablecer</button>
       </h4>
@@ -117,6 +117,13 @@ export function PanelEq({ pista, ancla, alCerrar }: { pista: Pista; ancla: DOMRe
           </div>
         );
       })}
+      <div className="banda" style={{ marginTop: 10 }}>
+        <span className="titulo" style={{ gridRow: "auto" }}>Reverb</span>
+        <input type="range" min={0} max={1} step={0.01} value={pista.reverb ?? 0} aria-label={`Reverb de ${pista.nombre}`}
+          onChange={(e) => ajustarPista(pista.id, { reverb: Number(e.target.value) })}
+          onDoubleClick={() => ajustarPista(pista.id, { reverb: 0 })} />
+        <span className="valor">{Math.round((pista.reverb ?? 0) * 100)}%</span>
+      </div>
       <div className="banda" style={{ marginTop: 10, gridTemplateColumns: "1fr auto" }}>
         <span>Tono de esta pista <span className="tenue">(se suma al global)</span></span>
         <span>

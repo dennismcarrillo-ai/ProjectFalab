@@ -6,6 +6,7 @@ import { Editor } from "./componentes/Editor";
 import { Inicio } from "./componentes/Inicio";
 import { PanelTablatura } from "./componentes/PanelTablatura";
 import { Transporte } from "./componentes/Transporte";
+import { DialogoGrabacion, VentanaVideo, VistaPreviaDeCamara } from "./componentes/Video";
 import { usarApp, usarReproduccion, type Vista } from "./estado/almacen";
 import { IconoExportar, IconoNube } from "./util/iconos";
 import { Cancionero } from "./vistas/Cancionero";
@@ -66,6 +67,7 @@ function usarAtajos() {
       else if (!orden && tecla === "l") { hecho(); app.alternarBucle(); }
       else if (!orden && tecla === "b") { hecho(); app.fijar({ panelLateral: !app.panelLateral }); }
       else if (!orden && tecla === "t") { hecho(); app.fijar({ panelTablatura: !app.panelTablatura }); }
+      else if (!orden && tecla === "r") { hecho(); void app.alternarGrabacion(); }
       else if (e.key === "PageDown") { hecho(); void app.irA(1); }
       else if (e.key === "PageUp") { hecho(); void app.irA(-1); }
       else if (e.key === "Delete" || e.key === "Backspace") { hecho(); app.eliminarSeleccion(); }
@@ -85,6 +87,9 @@ export function App() {
   const errorMotor = usarApp((s) => s.errorMotor);
   const panelLateral = usarApp((s) => s.panelLateral);
   const panelTablatura = usarApp((s) => s.panelTablatura);
+  const ventanaVideo = usarApp((s) => s.ventanaVideo);
+  const vistaPrevia = usarApp((s) => s.grabacion?.vistaPrevia ?? null);
+  const hayVideo = !!proyecto && (proyecto.medioOriginal.tieneVideo || (proyecto.videos ?? []).length > 0);
   usarApp((s) => s.proyectos);
   usarApp((s) => s.playlists);
   usarApp((s) => s.playlistActiva);
@@ -156,6 +161,12 @@ export function App() {
             </nav>
             <span className="crecer" />
             <span className="estado-guardado">{TEXTO_GUARDADO[guardado]}</span>
+            {hayVideo && (
+              <button className={ventanaVideo ? "activo" : ""} aria-pressed={!!ventanaVideo} title="Ventana de video sincronizada (V)"
+                onClick={() => fijar({ ventanaVideo: ventanaVideo ? null : proyecto!.medioOriginal.tieneVideo ? "original" : proyecto!.videos![0].id })}>
+                Video
+              </button>
+            )}
             <button className={panelTablatura ? "activo" : ""} aria-pressed={panelTablatura} disabled={vista === "partitura"}
               onClick={() => fijar({ panelTablatura: !panelTablatura })} title="Tablatura sincronizada en un panel lateral (T)">Tablatura</button>
             <button onClick={() => fijar({ dialogo: "pedal" })} title="Asignar un pedal MIDI o de teclado">Pedal</button>
@@ -170,6 +181,9 @@ export function App() {
       {dialogo === "drive" && <DialogoDrive />}
       {dialogo === "estructura" && proyecto && <DialogoEstructura />}
       {dialogo === "pedal" && <DialogoPedal />}
+      {dialogo === "grabacion" && <DialogoGrabacion />}
+      {proyecto && ventanaVideo && !vistaPrevia && <VentanaVideo />}
+      {vistaPrevia && <VistaPreviaDeCamara flujo={vistaPrevia} />}
       <Progreso />
       <Aviso />
     </div>

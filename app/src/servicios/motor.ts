@@ -77,6 +77,8 @@ export interface OpcionesImportar {
 
 export interface PeticionExportar {
   tipo: "mezcla" | "pistas" | "video" | "cancionero" | "partitura" | "midi" | "tablatura";
+  /** Para `video`: «original» o el identificador de una toma de cámara. */
+  video?: string;
   formato?: string;
   destino?: string;
   cifrado?: Cifrado;
@@ -126,6 +128,36 @@ export const motor = {
   },
   analisis: (id: string, cifrado: Cifrado, transponer: number) =>
     json<Analisis>("GET", `/proyectos/${id}/analisis${q({ cifrado, transponer })}`),
+  reverbIr: async () => new Float32Array(await crudo("GET", "/reverb/ir")),
+  importarEnPista: (id: string, ruta: string, inicio: number, pista?: string) =>
+    json<Trabajo>("POST", `/proyectos/${id}/pistas/importar`, { ruta, inicio, pista }),
+  async subirAPista(id: string, archivo: File, inicio: number, pista?: string): Promise<Trabajo> {
+    const formulario = new FormData();
+    formulario.append("archivo", archivo);
+    formulario.append("inicio", String(inicio));
+    formulario.append("pista", pista ?? "");
+    const respuesta = await fetch(`${URL_NAVEGADOR}/proyectos/${id}/pistas/subir`, { method: "POST", body: formulario });
+    if (!respuesta.ok) throw new Error((await respuesta.json()).detail ?? "No se pudo subir el archivo.");
+    return respuesta.json();
+  },
+  grabacion: {
+    iniciar: (id: string, tipo: "audio" | "video", extension = "") =>
+      json<{ sesion: string }>("POST", `/proyectos/${id}/grabaciones`, { tipo, extension }),
+    trozo: (id: string, sesion: string, datos: string) =>
+      json<{ acumulado: number }>("POST", `/proyectos/${id}/grabaciones/${sesion}/trozo`, { datos, canales: 2 }),
+    terminar: (id: string, sesion: string, cuerpo: Record<string, unknown>) =>
+      json<{ pista?: string; fuente?: string; video?: string; descartada?: boolean }>(
+        "POST", `/proyectos/${id}/grabaciones/${sesion}/terminar`, cuerpo),
+  },
+  /** Dirección reproducible de un video del proyecto y el instante de la canción en que empieza. */
+  async video(id: string, idVideo: string): Promise<{ url: string; inicio: number }> {
+    const info = await json<{ ruta: string; inicio: number }>("GET", `/proyectos/${id}/videos/${idVideo}${q({ solo_ruta: "true" })}`);
+    if (enEscritorio) {
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      return { url: convertFileSrc(info.ruta), inicio: info.inicio };
+    }
+    return { url: `${URL_NAVEGADOR}/proyectos/${id}/videos/${idVideo}`, inicio: info.inicio };
+  },
   notas: (id: string, instrumento: string) => json<{ notas: Nota[] }>("GET", `/proyectos/${id}/notas${q({ instrumento })}`),
   alphatex: (id: string, instrumento: string, modo: string) =>
     json<{ tex: string; modo: string; conTrastes: boolean; compases: { inicio: number; fin: number }[] }>(

@@ -1,5 +1,6 @@
 /** Estado global de la aplicación (Zustand). */
 import { create } from "zustand";
+import { Grabadora, OPCIONES_POR_DEFECTO, type OpcionesDeGrabacion } from "../audio/Grabadora";
 import { motorAudio, type EstadoReproduccion } from "../audio/MotorAudio";
 import {
   copiarClips, copiarRango, dividir, eliminar, finDe, pegar, quitarRango,
@@ -14,7 +15,18 @@ import type {
 import { desplazar, ordenar } from "../util/biblioteca";
 
 export type Vista = "editor" | "karaoke" | "cancionero" | "partitura";
-export type Dialogo = null | "exportar" | "drive" | "estructura" | "pedal";
+export type Dialogo = null | "exportar" | "drive" | "estructura" | "pedal" | "grabacion";
+
+const CLAVE_GRABACION = "falab.grabacion";
+function leerOpcionesDeGrabacion(): OpcionesDeGrabacion {
+  try {
+    return { ...OPCIONES_POR_DEFECTO, ...JSON.parse(localStorage.getItem(CLAVE_GRABACION) ?? "{}") };
+  } catch {
+    return OPCIONES_POR_DEFECTO;
+  }
+}
+const COLORES_DE_PISTA = ["#f87171", "#34d399", "#60a5fa", "#fbbf24", "#c084fc", "#f472b6"];
+const MAX_PISTAS = 12;
 type Montaje = Record<string, Clip[]>;
 
 const MAX_HISTORIAL = 100;
@@ -38,6 +50,11 @@ interface EstadoApp {
   /** Orden de la vista «Todos los proyectos». */
   ordenGeneral: OrdenPlaylist;
   panelLateral: boolean;
+  /** Grabación en curso: «preparando» (permisos), «esperando» (cuenta regresiva) o «grabando». */
+  grabacion: null | { estado: "preparando" | "esperando" | "grabando" | "guardando"; vistaPrevia: MediaStream | null };
+  opcionesDeGrabacion: OpcionesDeGrabacion;
+  /** Video que se muestra en la ventana flotante («original», una toma de cámara o ninguno). */
+  ventanaVideo: string | null;
   /** Panel derecho con la tablatura sincronizada. */
   panelTablatura: boolean;
   driveAutomatico: boolean;
@@ -79,7 +96,15 @@ interface EstadoApp {
 
   fijar(parcial: Partial<Pick<EstadoApp,
     "vista" | "dialogo" | "zoom" | "iman" | "aviso" | "pistaActiva" | "playlistActiva" | "ordenGeneral" | "panelLateral"
-    | "panelTablatura">>): void;
+    | "panelTablatura" | "ventanaVideo">>): void;
+
+  // Pistas nuevas, grabación y video
+  anadirPista(): void;
+  eliminarPista(id: string): void;
+  importarEnPista(origen: string | File): Promise<void>;
+  fijarOpcionesDeGrabacion(parcial: Partial<OpcionesDeGrabacion>): void;
+  alternarGrabacion(): Promise<void>;
+  eliminarToma(id: string): void;
 
   // Biblioteca
   crearPlaylist(nombre: string): Promise<void>;
@@ -174,6 +199,31 @@ export const usarApp = create<EstadoApp>((set, get) => {
     set({ analisis });
     motorAudio.fijarPulsos(analisis.mapaTempo.pulsos);
   };
+
+  /** Detiene la toma en curso y la deja como clip en su pista (y como toma de video, si hay cámara). */
+  let grabadora: Grabadora | null = null;
+  const terminarGrabacion = async (): Promise<void> => {
+    const activa = grabadora;
+    const { proyecto, grabacion } = get();
+    if (!activa || !proyecto || !grabacion || grabacion.estado === "guardando") return;
+    grabadora = null;
+    motorAudio.pausar();
+    motorAudio.alArrancar = () => {};
+    set({ grabacion: { estado: "guardando", vistaPrevia: null } });
+    const pista = proyecto.pistas.find((p) => p.id === get().pistaActiva);
+    const tomas = proyecto.pistas.filter((p) => p.instrumento === "extra").length;
+    try {
+      const resultado = await activa.terminar(pista?.instrumento === "extra" ? pista.id : undefined, `Grabación ${tomas + 1}`,
+        grabacion.estado !== "grabando");
+      await recargar();
+      if (resultado.pista) set({ pistaActiva: resultado.pista });
+      if (resultado.video) set({ ventanaVideo: resultado.video });
+    } catch (error) {
+      set({ aviso: { texto: `No se pudo guardar la grabación: ${(error as Error).message}`, tipo: "error" } });
+    }
+    set({ grabacion: null });
+  };
+  motorAudio.alTerminar = () => void terminarGrabacion(); // la canción llegó al final mientras se grababa
 
   /** Vuelve a leer el proyecto abierto cuando el motor lo ha modificado (guías, tempo…). */
   const recargar = async (): Promise<void> => {
@@ -281,6 +331,9 @@ export const usarApp = create<EstadoApp>((set, get) => {
     playlistActiva: null,
     ordenGeneral: "manual",
     panelLateral: false,
+    grabacion: null,
+    opcionesDeGrabacion: leerOpcionesDeGrabacion(),
+    ventanaVideo: null,
     panelTablatura: false,
     driveAutomatico: false,
     showContinuo: false,
@@ -415,6 +468,100 @@ export const usarApp = create<EstadoApp>((set, get) => {
       set(parcial);
       // Cambiar de lista o de orden cambia cuál es «la siguiente».
       if ("playlistActiva" in parcial || "ordenGeneral" in parcial) void prepararSiguiente();
+    },
+
+    anadirPista() {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      if (proyecto.pistas.length >= MAX_PISTAS) {
+        set({ aviso: { texto: `Un proyecto admite como máximo ${MAX_PISTAS} pistas.`, tipo: "info" } });
+        return;
+      }
+      const extras = proyecto.pistas.filter((p) => p.instrumento === "extra").length;
+      const id = `pista_${Math.random().toString(36).slice(2, 10)}`;
+      aplicar((p) => ({
+        ...p,
+        pistas: [...p.pistas, {
+          id, nombre: `Pista ${extras + 1}`, instrumento: "extra", color: COLORES_DE_PISTA[extras % COLORES_DE_PISTA.length],
+          volumen: 0, paneo: 0, silencio: false, solo: false, tono: 0, reverb: 0, clips: [],
+          eq: { bajos: { frecuencia: 120, ganancia: 0 }, medios: { frecuencia: 1000, ganancia: 0, q: 1 }, agudos: { frecuencia: 8000, ganancia: 0 } },
+        }],
+      }));
+      set({ pistaActiva: id, clipsSeleccionados: [] });
+    },
+
+    eliminarPista(id) {
+      get().marcarHistorial();
+      aplicar((p) => ({ ...p, pistas: p.pistas.filter((pista) => pista.id !== id) }));
+      if (get().pistaActiva === id) set({ pistaActiva: get().proyecto?.pistas[0]?.id ?? null });
+    },
+
+    async importarEnPista(origen) {
+      const proyecto = get().proyecto;
+      if (!proyecto) return;
+      await guardarAhora(); // el motor añade la pista sobre lo que hay guardado
+      const activa = proyecto.pistas.find((p) => p.id === get().pistaActiva);
+      // Sobre una pista propia se añade el clip; sobre un stem original se crea una pista nueva.
+      const destino = activa?.instrumento === "extra" ? activa.id : undefined;
+      const cursor = usarReproduccion.getState().posicion;
+      const final = await get().ejecutar("Importando el audio", () =>
+        typeof origen === "string"
+          ? motor.importarEnPista(proyecto.id, origen, cursor, destino)
+          : motor.subirAPista(proyecto.id, origen, cursor, destino));
+      if (!final) return;
+      await recargar();
+      set({ pistaActiva: final.resultado.pista });
+      const avisos: string[] = final.resultado.avisos ?? [];
+      if (avisos.length) set({ aviso: { texto: avisos.join("\n"), tipo: "info" } });
+    },
+
+    fijarOpcionesDeGrabacion(parcial) {
+      const opciones = { ...get().opcionesDeGrabacion, ...parcial };
+      set({ opcionesDeGrabacion: opciones });
+      try {
+        localStorage.setItem(CLAVE_GRABACION, JSON.stringify(opciones));
+      } catch {
+        /* sin almacenamiento local: las opciones valen solo para esta sesión */
+      }
+    },
+
+    async alternarGrabacion() {
+      const { proyecto, grabacion } = get();
+      if (!proyecto) return;
+      if (grabacion) return terminarGrabacion();
+      if (proyecto.velocidad !== 1 || proyecto.tono !== 0) {
+        set({ aviso: { texto: "Para grabar, pon la velocidad al 100 % y el tono en 0: así la toma queda sincronizada.", tipo: "info" } });
+        return;
+      }
+      motorAudio.pausar();
+      await guardarAhora();
+      const nueva = new Grabadora();
+      grabadora = nueva;
+      set({ grabacion: { estado: "preparando", vistaPrevia: null } });
+      try {
+        await nueva.preparar(proyecto.id, get().opcionesDeGrabacion);
+      } catch (error) {
+        grabadora = null;
+        const nombre = (error as DOMException).name;
+        const texto = nombre === "NotAllowedError"
+          ? "falab no tiene permiso para usar el micrófono o la cámara. Actívalo en Ajustes del Sistema → Privacidad y seguridad."
+          : nombre === "NotFoundError" || nombre === "OverconstrainedError"
+            ? "No se encontró el micrófono o la cámara elegidos. Revisa los dispositivos en las opciones de grabación."
+            : `No se pudo empezar a grabar: ${(error as Error).message}`;
+        set({ grabacion: null, aviso: { texto, tipo: "error" } });
+        return;
+      }
+      set({ grabacion: { estado: "esperando", vistaPrevia: nueva.vistaPrevia } });
+      motorAudio.alArrancar = (cuadro, posicion) => {
+        nueva.marcarArranque(cuadro, posicion);
+        if (get().grabacion) set({ grabacion: { estado: "grabando", vistaPrevia: nueva.vistaPrevia } });
+      };
+      await motorAudio.reproducir();
+    },
+
+    eliminarToma(id) {
+      aplicar((p) => ({ ...p, videos: (p.videos ?? []).filter((v) => v.id !== id) }));
+      if (get().ventanaVideo === id) set({ ventanaVideo: null });
     },
 
     alternarShow() {
@@ -732,6 +879,7 @@ export const usarApp = create<EstadoApp>((set, get) => {
 
     alternarReproduccion() {
       if (!get().proyecto) return;
+      if (get().grabacion) return void terminarGrabacion(); // pausar durante una toma la da por terminada
       if (usarReproduccion.getState().estado === "detenido") void motorAudio.reproducir();
       else motorAudio.pausar();
     },

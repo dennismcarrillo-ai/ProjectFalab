@@ -53,6 +53,8 @@ export function Transporte() {
   const esperando = usarReproduccion((s) => s.esperando);
   const { ajustarProyecto, alternarReproduccion, detener, alternarBucle, fijar, alternarShow } = usarApp.getState();
   const show = usarApp((s) => s.showContinuo);
+  const grabacion = usarApp((s) => s.grabacion);
+  const textoDeGrabacion = { preparando: "Preparando…", esperando: "Cuenta…", grabando: "● Grabando", guardando: "Guardando…" };
   const bucle = usarApp((s) => s.bucle);
   const iman = usarApp((s) => s.iman);
   const zoom = usarApp((s) => s.zoom);
@@ -73,8 +75,18 @@ export function Transporte() {
         >
           {estado === "detenido" ? <IconoReproducir /> : <IconoPausa />}
         </button>
+        <button className={`boton-redondo grabar ${grabacion ? "activo" : ""}`} aria-pressed={!!grabacion}
+          onClick={() => void usarApp.getState().alternarGrabacion()}
+          disabled={grabacion?.estado === "preparando" || grabacion?.estado === "guardando"}
+          title="Grabar con el micrófono (R). Vuelve a pulsar para terminar la toma."
+          aria-label={grabacion ? "Terminar la grabación" : "Grabar"}>
+          <span className="punto" />
+        </button>
+        <button className="plano paso" onClick={() => fijar({ dialogo: "grabacion" })}
+          title="Opciones de grabación: micrófono, cámara y latencia" aria-label="Opciones de grabación">⚙</button>
       </div>
       <Reloj />
+      {grabacion && <span className="estado-grabacion">{textoDeGrabacion[grabacion.estado]}</span>}
       {esperando && <span className="tenue">Cargando audio…</span>}
       <div className="separador" />
 

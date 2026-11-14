@@ -29,6 +29,10 @@ no hay servidores ni coste por uso, y tu música no sale de tu ordenador.
   tempo editable en BPM con un decimal, cuenta regresiva de 1–4 compases de 1–6 tiempos a negras o
   corcheas, marcadores de ensayo automáticos y editables, compás por sección y pista de guías de
   voz («Coro, dos, tres, cuatro»).
+- **Grabación**: pistas nuevas, grabar con micrófono o interfaz sobre la canción (con compensación
+  de latencia), importar audio o MIDI a una pista y reverb por pista.
+- **Video**: ventana flotante con el video original sincronizado, grabación con la cámara mientras
+  tocas y exportación de la mezcla con el video original o con tu toma.
 - **Proyectos portátiles**: exportar e importar un proyecto completo como archivo `.falab`.
 - **Letra editable** y **detalle de acordes** ajustable para recuperar los acordes de paso.
 - **Google Drive**: sincronización de proyectos en la carpeta `falab_projects`, manual o
@@ -91,11 +95,12 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (26 pruebas automáticas) |
-| Edición, EQ, reproductor y orden de playlists | Probado (35 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (30 pruebas automáticas) |
+| Edición, EQ, reproductor y orden de playlists | Probado (37 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
 | Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
 | Pedal MIDI y voz de las guías | La lógica está probada con mensajes y voz simulados; **pendiente de confirmar** con un pedal real y con la voz de macOS |
+| Grabación de micrófono y cámara, y video flotante | Probado en Chromium con dispositivos simulados; **pendiente de confirmar** en la app de macOS (permisos del sistema y acceso al video) |
 | Google Drive (subida, descarga y guardado automático) | La cola automática está probada con un Drive simulado; **pendiente de confirmar** contra Drive real |
 
 ## Limitaciones conocidas
@@ -105,7 +110,9 @@ cd app && npm test
 - El compás se detecta como 4/4; los cambios de compás se indican a mano por sección.
 - Los nombres de las secciones (Verso, Coro…) son una propuesta automática: revísalos.
 - En el show continuo, si alguna de las dos canciones usa cambio de velocidad o de tono, el empalme pierde unos milisegundos del final de la primera.
-- Al exportar video, los cortes y movimientos de clips afectan al audio pero no a la imagen.
+- En el video (ventana flotante y exportación), los cortes y movimientos de clips afectan al audio pero no a la imagen.
+- Para grabar hay que tener la velocidad al 100 % y el tono en 0.
+- Un MIDI importado suena con un sintetizador básico salvo que instales FluidSynth y un SoundFont (variable `FALAB_SOUNDFONT`).
 - La partitura y la tablatura no aplican la transposición global (el cancionero y los acordes sí).
 - La partitura se escribe a una sola voz por instrumento y cuantizada a semicorcheas.
 

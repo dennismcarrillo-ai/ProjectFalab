@@ -66,6 +66,8 @@ interface Canal {
   agudos: BiquadFilterNode;
   fader: GainNode;
   paneo: StereoPannerNode;
+  /** Cuánto de la pista se manda a la reverb compartida. */
+  envio: GainNode;
 }
 
 export interface EstadoReproduccion {
@@ -117,14 +119,22 @@ export class MotorAudio {
     });
     const maestro = contexto.createGain();
     maestro.connect(contexto.destination);
+    // Una sola reverb por convolución para todas las pistas: cada una decide cuánto le envía.
+    const sala = contexto.createConvolver();
+    sala.normalize = false; // la respuesta ya viene calibrada: así coincide con la exportación
+    sala.connect(maestro);
+    void this.cargarSala(contexto, sala);
     for (let i = 0; i < MAX_PISTAS; i++) {
       const graves = new BiquadFilterNode(contexto, { type: "lowshelf" });
       const medios = new BiquadFilterNode(contexto, { type: "peaking" });
       const agudos = new BiquadFilterNode(contexto, { type: "highshelf" });
       const fader = contexto.createGain();
       const paneo = new StereoPannerNode(contexto, { channelCount: 2, channelCountMode: "explicit" });
+      const envio = contexto.createGain();
+      envio.gain.value = 0;
       nodo.connect(graves, i).connect(medios).connect(agudos).connect(fader).connect(paneo).connect(maestro);
-      this.canales.push({ graves, medios, agudos, fader, paneo });
+      paneo.connect(envio).connect(sala);
+      this.canales.push({ graves, medios, agudos, fader, paneo, envio });
     }
     // El metrónomo va directo a la salida: no le afecta el volumen maestro ni la mezcla.
     const clics = contexto.createGain();
@@ -144,6 +154,29 @@ export class MotorAudio {
       if (this.siguiente) this.encolar(this.siguiente.proyecto, this.siguiente.pulsos);
     }
   }
+
+  /** Descarga del motor la respuesta al impulso (la misma que usa la exportación). */
+  private async cargarSala(contexto: AudioContext, sala: ConvolverNode): Promise<void> {
+    try {
+      const datos = await motor.reverbIr();
+      const bufer = contexto.createBuffer(2, datos.length / 2, FRECUENCIA);
+      for (let canal = 0; canal < 2; canal++) {
+        const destino = bufer.getChannelData(canal);
+        for (let i = 0; i < destino.length; i++) destino[i] = datos[i * 2 + canal];
+      }
+      sala.buffer = bufer;
+    } catch (error) {
+      console.error("No se pudo cargar la reverb", error);
+    }
+  }
+
+  /** Contexto de audio (lo necesita la grabadora para capturar con el mismo reloj). */
+  get contextoDeAudio(): AudioContext | null {
+    return this.contexto;
+  }
+
+  /** Aviso de que la reproducción arrancó: cuadro del reloj de audio y posición de la canción. */
+  alArrancar: (cuadro: number, posicion: number) => void = () => {};
 
   private enviar(mensaje: MensajeAlProcesador, transferibles: Transferable[] = []): void {
     this.nodo?.port.postMessage(mensaje, transferibles);
@@ -171,6 +204,8 @@ export class MotorAudio {
       this.aplicarMezcla(proyecto);
       this.alCambiarDeCancion(proyecto, pulsos);
       this.planificarFragmentos();
+    } else if (mensaje.tipo === "arranque") {
+      this.alArrancar(mensaje.cuadro, mensaje.posicion / FRECUENCIA);
     } else if (mensaje.tipo === "fin") {
       this.alTerminar();
     }
@@ -211,8 +246,10 @@ export class MotorAudio {
       const pista = proyecto.pistas[i];
       if (!pista) {
         canal.fader.gain.setTargetAtTime(0, ahora, SUAVIZADO);
+        canal.envio.gain.setTargetAtTime(0, ahora, SUAVIZADO);
         return;
       }
+      canal.envio.gain.setTargetAtTime(pista.reverb ?? 0, ahora, SUAVIZADO);
       const audible = haySolo ? pista.solo : !pista.silencio;
       canal.fader.gain.setTargetAtTime(audible ? dbALineal(pista.volumen) : 0, ahora, SUAVIZADO);
       canal.paneo.pan.setTargetAtTime(pista.paneo, ahora, SUAVIZADO);

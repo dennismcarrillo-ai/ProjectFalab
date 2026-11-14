@@ -19,6 +19,7 @@ import {
 } from "./protocolo";
 
 declare const sampleRate: number;
+declare const currentFrame: number;
 declare function registerProcessor(nombre: string, clase: unknown): void;
 declare class AudioWorkletProcessor {
   readonly port: MessagePort;
@@ -136,6 +137,8 @@ class ProcesadorFalab extends AudioWorkletProcessor {
   private compas = 4;
 
   private esperando = false;
+  /** Se avisa del arranque en el primer bloque que realmente suena (para alinear grabaciones). */
+  private avisarArranque = false;
   private pedidos = new Set<string>();
   private cuantosDesdeInforme = 0;
 
@@ -193,6 +196,7 @@ class ProcesadorFalab extends AudioWorkletProcessor {
         this.cuentaIntervalo = Math.max(1, Math.round(m.intervaloDeCuenta));
         this.cuentaHastaClic = 0;
         this.estado = m.clicsDeCuenta > 0 ? "cuenta" : "reproduciendo";
+        this.avisarArranque = true;
         this.informar();
         break;
       case "pausar":
@@ -456,6 +460,10 @@ class ProcesadorFalab extends AudioWorkletProcessor {
       }
       if (!faltan || this.pistas.length === 0) {
         // Durante un cambio de canción aún pueden quedar pistas de la anterior terminando de sonar.
+        if (this.avisarArranque) {
+          this.avisarArranque = false;
+          this.enviar({ tipo: "arranque", cuadro: currentFrame, posicion: this.posicion });
+        }
         const sonando = Math.max(this.pistas.length, this.actual ? this.actual.pistas.length : 0);
         for (let p = 0; p < sonando; p++) {
           if (this.colas[p].frames >= CUANTO) this.colas[p].sacar(salidas[p][0], salidas[p][1], CUANTO);
@@ -501,3 +509,50 @@ class ProcesadorFalab extends AudioWorkletProcessor {
 }
 
 registerProcessor("falab-procesador", ProcesadorFalab);
+
+/**
+ * Capturador de micrófono. Corre en el mismo hilo y con el mismo reloj que el reproductor, así
+ * que cada muestra grabada se puede situar exactamente en la canción. Entrega el audio en trozos
+ * de ~1 s que el hilo principal envía al motor: nunca hay una toma entera en memoria.
+ */
+class GrabadorFalab extends AudioWorkletProcessor {
+  private bufer = new Int16Array(44100 * 2);
+  private frames = 0;
+  private cuadroInicial = 0;
+  private activo = true;
+
+  constructor() {
+    super();
+    this.port.onmessage = (evento: MessageEvent<{ tipo: "parar" }>) => {
+      if (evento.data.tipo === "parar") {
+        this.vaciar();
+        this.activo = false;
+      }
+    };
+  }
+
+  private vaciar(): void {
+    if (this.frames === 0) return;
+    const datos = this.bufer.slice(0, this.frames * 2);
+    this.port.postMessage({ tipo: "trozo", cuadro: this.cuadroInicial, datos }, [datos.buffer]);
+    this.frames = 0;
+  }
+
+  process(entradas: Float32Array[][]): boolean {
+    if (!this.activo) return false;
+    const izquierda = entradas[0]?.[0];
+    if (!izquierda) return true; // el micrófono aún no entrega audio
+    const derecha = entradas[0][1] ?? izquierda; // micrófono mono: mismo audio en ambos canales
+    if (this.frames === 0) this.cuadroInicial = currentFrame;
+    let i = this.frames * 2;
+    for (let f = 0; f < izquierda.length; f++) {
+      this.bufer[i++] = Math.max(-32768, Math.min(32767, Math.round(izquierda[f] * 32767)));
+      this.bufer[i++] = Math.max(-32768, Math.min(32767, Math.round(derecha[f] * 32767)));
+    }
+    this.frames += izquierda.length;
+    if (this.frames + 128 > this.bufer.length / 2) this.vaciar();
+    return true;
+  }
+}
+
+registerProcessor("falab-grabador", GrabadorFalab);

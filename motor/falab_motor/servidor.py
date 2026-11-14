@@ -12,8 +12,8 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFil
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import (__version__, biblioteca, config, drive, edicion_letras, guias, medios, midi, paquete,
-               proyecto as modelo)
+from . import (__version__, biblioteca, config, drive, edicion_letras, guias, medios, midi, paquete, pistas,
+               proyecto as modelo, reverb)
 from .exportacion import cancionero
 from .exportacion.exportar import exportar
 from .pipeline import acordes as modulo_acordes
@@ -129,7 +129,7 @@ def obtener_proyecto(id_proyecto: str) -> dict:
     return _proyecto(id_proyecto)
 
 
-CAMPOS_EDITABLES = ("nombre", "velocidad", "tono", "volumenMaestro", "metronomo", "pistas", "compas")
+CAMPOS_EDITABLES = ("nombre", "velocidad", "tono", "volumenMaestro", "metronomo", "pistas", "compas", "videos")
 
 
 @app.put("/proyectos/{id_proyecto}")
@@ -233,6 +233,91 @@ def generar_guias(id_proyecto: str) -> dict:
     """Genera la pista de guías de voz («Coro, dos, tres, cuatro») a partir de la estructura."""
     _proyecto(id_proyecto)
     return trabajos.lanzar("guias", lambda t: guias.generar(id_proyecto, t)).a_dict()
+
+
+# ------------------------------------------------- pistas nuevas, grabación y video
+
+@app.get("/reverb/ir")
+def respuesta_de_reverb() -> Response:
+    """Respuesta al impulso de la reverb (float32 estéreo entrelazado a 44,1 kHz)."""
+    return Response(reverb.respuesta_al_impulso().tobytes(), media_type="application/octet-stream")
+
+
+@app.post("/proyectos/{id_proyecto}/pistas/importar")
+def importar_en_pista(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
+    """Añade un archivo de audio o MIDI del disco como clip en una pista nueva o existente."""
+    _proyecto(id_proyecto)
+    if not cuerpo.get("ruta"):
+        raise HTTPException(400, "Falta la ruta del archivo.")
+    return trabajos.lanzar("importar-pista", lambda t: pistas.importar_archivo(
+        id_proyecto, Path(cuerpo["ruta"]), float(cuerpo.get("inicio", 0.0)), cuerpo.get("pista"), t)).a_dict()
+
+
+@app.post("/proyectos/{id_proyecto}/pistas/subir")
+async def subir_a_pista(id_proyecto: str, archivo: UploadFile = File(...), inicio: float = Form(0.0),
+                        pista: str = Form("")) -> dict:
+    """Variante de importar para cuando la interfaz corre en un navegador."""
+    _proyecto(id_proyecto)
+    nombre = re.sub(r"[^\w\-. ]+", "_", Path(archivo.filename or "audio").name)
+    destino = config.DIR_DATOS / "importados" / nombre
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    with open(destino, "wb") as salida:
+        shutil.copyfileobj(archivo.file, salida)
+    return trabajos.lanzar("importar-pista", lambda t: pistas.importar_archivo(
+        id_proyecto, destino, inicio, pista or None, t)).a_dict()
+
+
+@app.post("/proyectos/{id_proyecto}/grabaciones")
+def iniciar_grabacion(id_proyecto: str, cuerpo: dict = Body(...)) -> dict:
+    _proyecto(id_proyecto)
+    try:
+        return {"sesion": pistas.iniciar_grabacion(id_proyecto, cuerpo.get("tipo", "audio"), cuerpo.get("extension", ""))}
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.post("/proyectos/{id_proyecto}/grabaciones/{id_sesion}/trozo")
+def trozo_de_grabacion(id_proyecto: str, id_sesion: str, cuerpo: dict = Body(...)) -> dict:
+    try:
+        return {"acumulado": pistas.anadir_trozo(id_proyecto, id_sesion, cuerpo["datos"], int(cuerpo.get("canales", 2)))}
+    except KeyError as error:
+        raise HTTPException(404, "Grabación desconocida.") from error
+
+
+@app.post("/proyectos/{id_proyecto}/grabaciones/{id_sesion}/terminar")
+def terminar_grabacion(id_proyecto: str, id_sesion: str, cuerpo: dict = Body(...)) -> dict:
+    """Cierra la toma. Con `descartar` se borra; si no, queda como clip (audio) o como toma de cámara."""
+    try:
+        if cuerpo.get("descartar"):
+            pistas.cancelar_grabacion(id_proyecto, id_sesion)
+            return {"descartada": True}
+        inicio = float(cuerpo.get("inicio", 0.0))
+        if cuerpo.get("tipo") == "video":
+            resultado = pistas.terminar_video(id_proyecto, id_sesion, inicio)
+        else:
+            resultado = pistas.terminar_audio(id_proyecto, id_sesion, inicio, cuerpo.get("pista"),
+                                              str(cuerpo.get("nombre") or "Grabación")[:40])
+    except KeyError as error:
+        raise HTTPException(404, "Grabación desconocida.") from error
+    except (ValueError, medios.ErrorMedios) as error:
+        raise HTTPException(400, str(error)) from error
+    drive.anotar_cambio(id_proyecto)
+    return resultado
+
+
+@app.get("/proyectos/{id_proyecto}/videos/{id_video}")
+def video(id_proyecto: str, id_video: str, solo_ruta: bool = False):
+    """Video para la ventana flotante: el original (copia ligera) o una toma de cámara."""
+    _proyecto(id_proyecto)
+    try:
+        ruta, inicio = pistas.ruta_de_video(id_proyecto, id_video)
+    except KeyError as error:
+        raise HTTPException(404, str(error)) from error
+    except (ValueError, FileNotFoundError, medios.ErrorMedios) as error:
+        raise HTTPException(400, str(error)) from error
+    if solo_ruta:  # la app de escritorio lo abre directamente del disco
+        return {"ruta": str(ruta), "inicio": inicio}
+    return FileResponse(ruta, media_type="video/mp4")
 
 
 # ---------------------------------------------------------------- pedal MIDI
