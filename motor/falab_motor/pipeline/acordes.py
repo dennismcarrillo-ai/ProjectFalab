@@ -225,6 +225,94 @@ def tonalidad_inicial(analisis: dict, segundos: float = 30.0) -> dict | None:
     return {**tonalidad, "nombre": nombre}
 
 
+# ------------------------------------------------------------ línea de bajo
+
+def linea_de_bajo(limites: np.ndarray, croma_bajo: np.ndarray | None) -> list[dict]:
+    """Nota que toca el bajo en cada tramo, agrupando tramos seguidos con la misma nota.
+
+    Es independiente de los acordes: permite ver qué hace el bajo (inversiones, notas pedal,
+    ostinatos) frente a la armonía general.
+    """
+    if croma_bajo is None or croma_bajo.shape[1] == 0:
+        return []
+    energia = croma_bajo.sum(axis=0)
+    umbral = 0.12 * (np.percentile(energia, 90) if energia.any() else 1.0)
+    notas = np.where(energia > umbral, croma_bajo.argmax(axis=0), -1)
+    linea: list[dict] = []
+    for i, nota in enumerate(notas):
+        if nota < 0:
+            continue
+        inicio, fin = float(limites[i]), float(limites[i + 1])
+        if linea and linea[-1]["nota"] == int(nota) and abs(linea[-1]["fin"] - inicio) < 1e-6:
+            linea[-1]["fin"] = round(fin, 4)
+        else:
+            linea.append({"inicio": round(inicio, 4), "fin": round(fin, 4), "nota": int(nota)})
+    return linea
+
+
+def marcar_pedales(acordes: list[dict], linea: list[dict], minimo: int = 3) -> None:
+    """Marca las notas pedal: el bajo mantiene una nota mientras la armonía cambia por encima.
+
+    En esos acordes se anota el bajo real aunque no pertenezca al acorde (p. ej. F/C – G/C – C).
+    """
+    def bajo_de(acorde: dict) -> int | None:
+        pesos = np.zeros(12)
+        for tramo in linea:
+            comun = min(tramo["fin"], acorde["fin"]) - max(tramo["inicio"], acorde["inicio"])
+            if comun > 0:
+                pesos[tramo["nota"]] += comun
+        if pesos.sum() <= 0 or pesos.max() < 0.7 * pesos.sum():
+            return None
+        return int(pesos.argmax())
+
+    bajos = [bajo_de(a) for a in acordes]
+    i = 0
+    while i < len(acordes):
+        j = i
+        while j + 1 < len(acordes) and bajos[j + 1] is not None and bajos[j + 1] == bajos[i] \
+                and abs(acordes[j + 1]["inicio"] - acordes[j]["fin"]) < 0.05:
+            j += 1
+        tramo = acordes[i:j + 1]
+        distintos = {(a["raiz"], a["calidad"]) for a in tramo}
+        if bajos[i] is not None and len(tramo) >= minimo and len(distintos) >= 2:
+            for acorde in tramo:
+                acorde["pedal"] = True
+                acorde["bajo"] = None if acorde["raiz"] == bajos[i] else bajos[i]
+        i = j + 1
+
+
+def ostinatos(limites: np.ndarray, croma_bajo: np.ndarray | None, tiempos_por_compas: int = 4,
+              subdivisiones: int = 1) -> list[dict]:
+    """Tramos donde el bajo repite el mismo dibujo de notas, compás tras compás."""
+    if croma_bajo is None or croma_bajo.shape[1] == 0:
+        return []
+    energia = croma_bajo.sum(axis=0)
+    umbral = 0.12 * (np.percentile(energia, 90) if energia.any() else 1.0)
+    notas = np.where(energia > umbral, croma_bajo.argmax(axis=0), -1)
+    periodo = tiempos_por_compas * subdivisiones
+    encontrados: list[dict] = []
+    n = len(notas)
+    i = 0
+    while i + 2 * periodo <= n:
+        patron = notas[i:i + periodo]
+        # Un ostinato tiene dibujo: al menos dos notas distintas y casi sin silencios.
+        if len(set(patron[patron >= 0])) < 2 or np.sum(patron < 0) > periodo // 4:
+            i += 1
+            continue
+        repeticiones = 1
+        while i + (repeticiones + 1) * periodo <= n and \
+                np.mean(notas[i + repeticiones * periodo: i + (repeticiones + 1) * periodo] == patron) >= 0.85:
+            repeticiones += 1
+        if repeticiones >= 4:
+            fin = i + repeticiones * periodo
+            encontrados.append({"inicio": round(float(limites[i]), 4), "fin": round(float(limites[fin]), 4),
+                                "patron": [int(x) for x in patron], "repeticiones": repeticiones})
+            i = fin
+        else:
+            i += 1
+    return encontrados
+
+
 def con_nombres(analisis: dict, cifrado: str = "estandar", transponer: int = 0) -> dict:
     """Añade a cada acorde su nombre en el cifrado pedido y el nombre de la tonalidad.
 
@@ -243,4 +331,14 @@ def con_nombres(analisis: dict, cifrado: str = "estandar", transponer: int = 0) 
         acordes.append({**a, "raiz": raiz, "bajo": bajo,
                         "nombre": nombre_acorde(raiz, a["calidad"], bajo, cifrado=cifrado, bemoles=bemoles)})
     nombre_tonalidad = f"{nombre_nota(tonalidad['tonica'], bemoles=bemoles, cifrado=cifrado)} {tonalidad['modo']}"
-    return {"tonalidad": {**tonalidad, "nombre": nombre_tonalidad}, "acordes": acordes}
+
+    def nota(clase: int) -> str:
+        return nombre_nota((clase + transponer) % 12, bemoles=bemoles, cifrado=cifrado)
+
+    linea = [{**tramo, "nota": (tramo["nota"] + transponer) % 12, "nombre": nota(tramo["nota"])}
+             for tramo in analisis.get("lineaBajo", [])]
+    repetidos = [{**o, "patron": [(x + transponer) % 12 if x >= 0 else -1 for x in o["patron"]],
+                  "nombre": " ".join(nota(x) if x >= 0 else "·" for x in o["patron"])}
+                 for o in analisis.get("ostinatos", [])]
+    return {"tonalidad": {**tonalidad, "nombre": nombre_tonalidad}, "acordes": acordes,
+            "lineaBajo": linea, "ostinatos": repetidos}

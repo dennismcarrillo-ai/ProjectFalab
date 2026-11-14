@@ -131,6 +131,12 @@ def notas_exactas(vueltas: int = 4) -> dict[str, list[dict]]:
             notas["bajo"].append({"inicio": t, "fin": t + pulso * 0.95, "tono": grave + (12 if p == 3 else 0), "velocidad": 90})
             notas["guitarra"] += [{"inicio": t, "fin": t + pulso * 0.9, "tono": n, "velocidad": 80} for n in tonos]
         notas["piano"] += [{"inicio": t0, "fin": t0 + 4 * pulso, "tono": n + 12, "velocidad": 70} for n in tonos]
+        if (compas // len(PROGRESION)) % 2 == 1:  # la melodía de la voz, igual que en `sintetizar`
+            palabras = LETRA[compas % len(LETRA)].split()
+            paso = 4 * pulso / (len(palabras) + 1)
+            notas.setdefault("voz", []).extend(
+                {"inicio": t0 + i * paso, "fin": t0 + (i + 0.9) * paso, "tono": tonos[i % len(tonos)] + 12, "velocidad": 85}
+                for i in range(len(palabras)))
     return notas
 
 

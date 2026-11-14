@@ -6,7 +6,7 @@
  * - En un navegador (desarrollo con `npm run dev`) se llama al motor directamente por HTTP.
  */
 import type {
-  Analisis, AsignacionPedal, Cifrado, DetalleAcordes, Playlist, Proyecto, ResumenProyecto, Salud, Seccion, Trabajo,
+  Analisis, AsignacionPedal, Cifrado, DetalleAcordes, Nota, Playlist, Proyecto, ResumenProyecto, Salud, Seccion, Trabajo,
 } from "../tipos";
 
 export interface EventoMidi {
@@ -126,9 +126,10 @@ export const motor = {
   },
   analisis: (id: string, cifrado: Cifrado, transponer: number) =>
     json<Analisis>("GET", `/proyectos/${id}/analisis${q({ cifrado, transponer })}`),
-  async partitura(id: string, instrumento?: string): Promise<string> {
-    return new TextDecoder().decode(await crudo("GET", `/proyectos/${id}/partitura${q({ instrumento })}`));
-  },
+  notas: (id: string, instrumento: string) => json<{ notas: Nota[] }>("GET", `/proyectos/${id}/notas${q({ instrumento })}`),
+  alphatex: (id: string, instrumento: string, modo: string) =>
+    json<{ tex: string; modo: string; conTrastes: boolean; compases: { inicio: number; fin: number }[] }>(
+      "GET", `/proyectos/${id}/alphatex${q({ instrumento, modo })}`),
   pcm: async (id: string, fuente: string, inicio: number, frames: number) =>
     new Int16Array(await crudo("GET", `/proyectos/${id}/fuentes/${fuente}/pcm${q({ inicio, frames })}`)),
   picos: async (id: string, fuente: string) =>

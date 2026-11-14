@@ -38,6 +38,8 @@ interface EstadoApp {
   /** Orden de la vista «Todos los proyectos». */
   ordenGeneral: OrdenPlaylist;
   panelLateral: boolean;
+  /** Panel derecho con la tablatura sincronizada. */
+  panelTablatura: boolean;
   driveAutomatico: boolean;
   /** Show continuo: al acabar una canción empieza la siguiente de la lista, sin cortes. */
   showContinuo: boolean;
@@ -76,7 +78,8 @@ interface EstadoApp {
   cancelarTrabajo(): void;
 
   fijar(parcial: Partial<Pick<EstadoApp,
-    "vista" | "dialogo" | "zoom" | "iman" | "aviso" | "pistaActiva" | "playlistActiva" | "ordenGeneral" | "panelLateral">>): void;
+    "vista" | "dialogo" | "zoom" | "iman" | "aviso" | "pistaActiva" | "playlistActiva" | "ordenGeneral" | "panelLateral"
+    | "panelTablatura">>): void;
 
   // Biblioteca
   crearPlaylist(nombre: string): Promise<void>;
@@ -278,6 +281,7 @@ export const usarApp = create<EstadoApp>((set, get) => {
     playlistActiva: null,
     ordenGeneral: "manual",
     panelLateral: false,
+    panelTablatura: false,
     driveAutomatico: false,
     showContinuo: false,
     pedal: {},

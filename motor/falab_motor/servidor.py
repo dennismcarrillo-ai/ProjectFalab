@@ -306,8 +306,16 @@ def analisis(id_proyecto: str, cifrado: str = "estandar", transponer: int = 0) -
     p = _proyecto(id_proyecto)
     if cifrado not in ("estandar", "jazz", "latino"):
         raise HTTPException(400, "Cifrado no válido.")
-    con_nombres = modulo_acordes.con_nombres(
-        modelo.leer_analisis(id_proyecto, "acordes", {}), cifrado, max(-12, min(12, transponer)))
+    guardado = modelo.leer_analisis(id_proyecto, "acordes", {}) or {}
+    if guardado.get("acordes") and guardado.get("version", 1) < 2:
+        # Proyecto analizado antes de existir la línea de bajo: se completa ahora, una sola vez.
+        try:
+            from .trabajos import Trabajo
+            orquestador.recalcular_acordes(id_proyecto, guardado.get("detalle", "normal"), Trabajo(id="auto", tipo="acordes"))
+            guardado = modelo.leer_analisis(id_proyecto, "acordes", {}) or {}
+        except Exception:  # noqa: BLE001 - si falla se sirve lo que había
+            pass
+    con_nombres = modulo_acordes.con_nombres(guardado, cifrado, max(-12, min(12, transponer)))
     letras = modelo.leer_analisis(id_proyecto, "letras", {"idioma": None, "segmentos": []})
     notas = modelo.leer_analisis(id_proyecto, "notas", {})
     secciones = (modelo.leer_analisis(id_proyecto, "estructura", {}) or {}).get("secciones", [])
@@ -318,6 +326,8 @@ def analisis(id_proyecto: str, cifrado: str = "estandar", transponer: int = 0) -
         "secciones": secciones,
         "tonalidad": con_nombres["tonalidad"],
         "acordes": con_nombres["acordes"],
+        "lineaBajo": con_nombres["lineaBajo"],
+        "ostinatos": con_nombres["ostinatos"],
         "letras": letras,
         "cancionero": cancionero.construir(letras, con_nombres["acordes"], p["duracion"]),
         "pistasConNotas": [k for k, v in notas.items() if v],
@@ -342,6 +352,30 @@ def partitura_musicxml(id_proyecto: str, instrumento: str | None = None) -> Resp
     except ValueError as error:
         raise HTTPException(404, str(error)) from error
     return Response(destino.read_bytes(), media_type="application/vnd.recordare.musicxml+xml")
+
+
+@app.get("/proyectos/{id_proyecto}/notas")
+def notas_de_pista(id_proyecto: str, instrumento: str = "voz") -> dict:
+    """Notas detectadas de un instrumento (para el carril de afinación del karaoke)."""
+    _proyecto(id_proyecto)
+    todas = modelo.leer_analisis(id_proyecto, "notas", {})
+    return {"notas": todas.get(instrumento, [])}
+
+
+@app.get("/proyectos/{id_proyecto}/alphatex")
+def partitura_sincronizada(id_proyecto: str, instrumento: str, modo: str = "ambas") -> dict:
+    """Partitura y/o tablatura de un instrumento, con el instante en que empieza cada compás."""
+    from .exportacion import alphatex
+
+    p = _proyecto(id_proyecto)
+    todas = modelo.leer_analisis(id_proyecto, "notas", {})
+    secciones = (modelo.leer_analisis(id_proyecto, "estructura", {}) or {}).get("secciones", [])
+    mapa = modelo.leer_analisis(id_proyecto, "mapa_tempo", {"bpm": p["bpm"], "compas": p["compas"], "pulsos": []})
+    mapa = modulo_estructura.aplicar_compases(mapa, secciones)
+    try:
+        return alphatex.generar(todas.get(instrumento, []), mapa, p["duracion"], instrumento, p["nombre"], modo)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
 
 
 # -------------------------------------------------------------- exportación

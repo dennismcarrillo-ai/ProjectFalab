@@ -187,7 +187,12 @@ def _acordes(notas: dict, stems: dict[str, Path], mezcla: Path, mapa: dict, dura
         if "bajo" in stems:
             croma_bajo = acordes.croma_desde_audio(librosa.load(str(stems["bajo"]), sr=fs, mono=True)[0], fs, limites)
         resultado = acordes.detectar(limites, croma, croma_bajo, coste_cambio=coste)
+    # Análisis profundo: qué hace el bajo frente a la armonía (línea, notas pedal y ostinatos).
+    resultado["lineaBajo"] = acordes.linea_de_bajo(limites, croma_bajo)
+    acordes.marcar_pedales(resultado["acordes"], resultado["lineaBajo"])
+    resultado["ostinatos"] = acordes.ostinatos(limites, croma_bajo, int(mapa.get("compas", 4)), subdivisiones)
     resultado["detalle"] = detalle
+    resultado["version"] = 2
     return resultado
 
 

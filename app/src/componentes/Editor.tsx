@@ -45,6 +45,8 @@ function Regla({ ventana, zoom, pulsos, anchoTotal }: { ventana: Ventana; zoom: 
   const ref = useRef<HTMLCanvasElement>(null);
   const acordes = usarApp((s) => s.analisis?.acordes) ?? [];
   const secciones = usarApp((s) => s.analisis?.secciones) ?? [];
+  const lineaBajo = usarApp((s) => s.analisis?.lineaBajo) ?? [];
+  const ostinatos = usarApp((s) => s.analisis?.ostinatos) ?? [];
   const { saltar, fijarRango } = usarApp.getState();
 
   useEffect(() => {
@@ -125,9 +127,21 @@ function Regla({ ventana, zoom, pulsos, anchoTotal }: { ventana: Ventana; zoom: 
       </div>
       <div className="acordes-carril">
         {acordes.filter((a) => a.fin >= t0 && a.inicio <= t1).map((a) => (
-          <span key={a.inicio} className="acorde-marca"
+          <span key={a.inicio} className={`acorde-marca ${a.pedal ? "pedal" : ""}`}
+            title={a.pedal ? `${a.nombre} · nota pedal en el bajo` : a.nombre}
             style={{ left: a.inicio * zoom, maxWidth: Math.max(0, (a.fin - a.inicio) * zoom - 1) }}>
             {a.nombre}
+          </span>
+        ))}
+      </div>
+      <div className="bajo-carril" title="Línea de bajo: la nota que toca el bajo, con independencia del acorde">
+        {ostinatos.filter((o) => o.fin >= t0 && o.inicio <= t1).map((o) => (
+          <span key={`o${o.inicio}`} className="ostinato-marca" title={`Ostinato de bajo: ${o.nombre} (×${o.repeticiones})`}
+            style={{ left: o.inicio * zoom, width: (o.fin - o.inicio) * zoom }} />
+        ))}
+        {lineaBajo.filter((b) => b.fin >= t0 && b.inicio <= t1).map((b) => (
+          <span key={b.inicio} className="bajo-marca" style={{ left: b.inicio * zoom, maxWidth: Math.max(0, (b.fin - b.inicio) * zoom - 1) }}>
+            {(b.fin - b.inicio) * zoom > 13 ? b.nombre : ""}
           </span>
         ))}
       </div>
@@ -387,8 +401,12 @@ export function Editor() {
         <div className="lienzo" style={{ width: ANCHO_CABECERA + anchoTotal }}>
           <div className="fila fila-regla">
             <div className="esquina">
-              <span className="tenue">Tonalidad</span>
-              <strong>{tonalidad ?? "—"}</strong>
+              <div className="leyenda-regla">
+                <span><span className="tenue">Tonalidad</span> <strong>{tonalidad ?? "—"}</strong></span>
+                <span className="tenue">Secciones</span>
+                <span className="tenue">Acordes</span>
+                <span className="tenue">Bajo</span>
+              </div>
               <span className="crecer" />
               <span className="tenue mono">{proyecto.compas}/4</span>
             </div>

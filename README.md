@@ -14,7 +14,12 @@ no hay servidores ni coste por uso, y tu música no sale de tu ordenador.
 - **Mini-DAW**: mezclador con faders, paneo, mute, solo y EQ paramétrico de 3 bandas; copiar,
   cortar y pegar; recorte arrastrando los bordes o con tiempos exactos; velocidad sin cambiar el
   tono y tono sin cambiar la velocidad; bucle; cuenta regresiva.
-- **Vistas** Karaoke, Cancionero y Partitura.
+- **Vistas** Karaoke (acordes por adelantado, carril de notas de la voz y barrido de color por
+  palabra), Cancionero y Partitura.
+- **Partitura y tablatura sincronizadas** (estilo Guitar Pro): el cursor sigue la música, un clic
+  en un compás salta a él, y hay un panel lateral de tablatura para tenerla junto al editor o al
+  karaoke.
+- **Análisis del bajo**: línea de bajo independiente de los acordes, notas pedal y ostinatos.
 - **Exportación**: mezcla o pistas en WAV/FLAC/MP3, video con la nueva mezcla, cancionero
   (PDF/TXT), partitura (MusicXML), MIDI y tablatura.
 - **Biblioteca y playlists**: ficha de cada proyecto (peso, archivos, tempo, tonalidad), listas
@@ -86,7 +91,7 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (24 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (26 pruebas automáticas) |
 | Edición, EQ, reproductor y orden de playlists | Probado (35 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
 | Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
@@ -101,7 +106,8 @@ cd app && npm test
 - Los nombres de las secciones (Verso, Coro…) son una propuesta automática: revísalos.
 - En el show continuo, si alguna de las dos canciones usa cambio de velocidad o de tono, el empalme pierde unos milisegundos del final de la primera.
 - Al exportar video, los cortes y movimientos de clips afectan al audio pero no a la imagen.
-- La vista Partitura no aplica la transposición global (el cancionero y los acordes sí).
+- La partitura y la tablatura no aplican la transposición global (el cancionero y los acordes sí).
+- La partitura se escribe a una sola voz por instrumento y cuantizada a semicorcheas.
 
 ## Arquitectura
 
@@ -111,4 +117,4 @@ mantienen bajo el consumo de memoria.
 ## Licencias de terceros
 
 Demucs (MIT), BasicPitch (Apache 2.0), Whisper (MIT), librosa (ISC), SoundTouchJS (LGPL 2.1),
-OpenSheetMusicDisplay (BSD), music21 (BSD). Rubber Band y FFmpeg se usan como programas externos.
+alphaTab (MPL 2.0), tipografía Bravura (SIL OFL), music21 (BSD). Rubber Band y FFmpeg se usan como programas externos.

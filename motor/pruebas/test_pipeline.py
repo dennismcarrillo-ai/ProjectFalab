@@ -233,3 +233,39 @@ def test_midi_espera_y_entrega_los_mensajes():
     assert eventos == [{"n": base + 1, "puerto": "Pedal", "estado": 0xB0, "canal": 1, "dato1": 64, "dato2": 127}]
     midi._recibir("Pedal", [0xF8])                                         # el reloj MIDI se ignora
     assert midi._contador == base + 1
+
+
+def test_linea_de_bajo_pedal_y_ostinato():
+    pulso = 0.5
+    limites = np.arange(0, 32 * pulso + 1e-9, pulso)
+
+    def croma(notas_por_pulso):
+        c = np.zeros((12, len(limites) - 1))
+        for i, nota in enumerate(notas_por_pulso):
+            if nota is not None:
+                c[nota % 12, i] = 1.0
+        return c
+
+    # Pedal: el bajo se queda en Do mientras la armonía hace C – F – G – C (4 pulsos cada uno).
+    linea = acordes.linea_de_bajo(limites, croma([0] * 16 + [None] * 16))
+    assert linea == [{"inicio": 0.0, "fin": 8.0, "nota": 0}]
+    progresion = [{"inicio": 2.0 * i, "fin": 2.0 * (i + 1), "raiz": r, "calidad": "maj", "bajo": None}
+                  for i, r in enumerate([0, 5, 7, 0])]
+    acordes.marcar_pedales(progresion, linea)
+    assert all(a["pedal"] for a in progresion)
+    nombres = [a["nombre"] for a in acordes.con_nombres({"acordes": progresion, "lineaBajo": linea})["acordes"]]
+    assert nombres == ["C", "F/C", "G/C", "C"]
+
+    # Sin pedal: el bajo sigue a las fundamentales y no se marca nada.
+    normal = [{"inicio": 2.0 * i, "fin": 2.0 * (i + 1), "raiz": r, "calidad": "maj", "bajo": None}
+              for i, r in enumerate([0, 5, 7, 0])]
+    acordes.marcar_pedales(normal, acordes.linea_de_bajo(limites, croma([0] * 4 + [5] * 4 + [7] * 4 + [0] * 4)))
+    assert not any(a.get("pedal") for a in normal)
+
+    # Ostinato: el dibujo Do–Mi–Sol–La se repite seis compases y luego el bajo hace otra cosa.
+    dibujo = [0, 4, 7, 9]
+    repetidos = acordes.ostinatos(limites, croma(dibujo * 6 + [2, 2, 2, 2, 5, 5, 7, 7]), 4)
+    assert repetidos == [{"inicio": 0.0, "fin": 12.0, "patron": dibujo, "repeticiones": 6}]
+    con_nombre = acordes.con_nombres({"acordes": [], "ostinatos": repetidos}, "latino", transponer=2)
+    assert con_nombre["ostinatos"][0]["nombre"] == "Re Fa# La Si"
+    assert acordes.ostinatos(limites, croma([0] * 32), 4) == []          # una nota tenida no es un ostinato

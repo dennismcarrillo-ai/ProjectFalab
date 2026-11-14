@@ -111,7 +111,7 @@ def test_exportaciones_de_partitura_tablatura_y_cancionero(carpeta_de_datos):
     from music21 import converter
 
     partitura_leida = converter.parse(salidas[("partitura", None)][0])
-    assert len(partitura_leida.parts) == 3
+    assert len(partitura_leida.parts) == 4   # bajo, guitarra, piano y voz
     bajo = partitura_leida.parts[0]
     assert [n.pitch.midi for n in bajo.recurse().notes][:4] == [36, 36, 36, 48]
 
@@ -160,3 +160,47 @@ def test_cancionero_no_pierde_acordes():
     assert escritos == len(acordes)
     texto = cancionero.a_texto("T", "Do mayor", 100, lineas).splitlines()
     assert texto[3] == "C G/B Am Em F G C" or texto[3].startswith("C G/B Am")
+
+
+def test_alphatex_respeta_compases_ligaduras_y_digitacion():
+    from falab_motor.exportacion import alphatex
+
+    # Dos compases de 4/4 y, desde el pulso 8, compases de 3/4 (pulsos cada 0,5 s).
+    pulsos = [{"t": 0.5 * i, "pulso": i % 4 + 1} for i in range(8)]
+    pulsos += [{"t": 4.0 + 0.5 * i, "pulso": i % 3 + 1, "tiempos": 3} for i in range(6)]
+    mapa = {"bpm": 120.0, "compas": 4, "pulsos": pulsos}
+    notas = [
+        {"inicio": 0.0, "fin": 0.5, "tono": 36},     # Do: negra en el compás 1 (cuerda La, traste 3)
+        {"inicio": 0.75, "fin": 1.0, "tono": 36},    # corchea a contratiempo
+        {"inicio": 1.5, "fin": 3.0, "tono": 33},     # La: empieza en el 4.º pulso y se liga al compás 2
+        {"inicio": 4.0, "fin": 5.5, "tono": 28},     # Mi al aire: blanca con puntillo en el compás de 3/4
+    ]
+    r = alphatex.generar(notas, mapa, 7.0, "bajo", 'Mi "tema"', "tablatura")
+    assert [c["inicio"] for c in r["compases"]] == [0.0, 2.0, 4.0, 5.5] and r["compases"][-1]["fin"] == 7.0
+    cabecera, compases = r["tex"].split("\n.\n")
+    assert "\\title \"Mi 'tema'\"" in cabecera and "\\staff{tabs}" in compases and "\\tuning G2 D2 A1 E1" in compases
+    lineas = compases.split("\n", 1)[1].split(" |\n")
+    assert lineas[0] == "\\ts 4 4 \\clef F4 3.3.4 r.8 3.3.8 r.4 5.4.4"         # La grave = cuerda Mi, traste 5
+    assert lineas[1] == "-.4.2 r.2"                                              # ligadura que cruza la barra
+    assert lineas[2] == "\\ts 3 4 0.4.2{d}"                                      # cambio de compás
+    assert lineas[3] == "r.2{d}"
+
+    # Cada compás escrito dura exactamente lo que su compás real.
+    duraciones = {"1": 16, "2": 8, "4": 4, "8": 2, "16": 1}
+    for linea, pasos in zip(lineas, [16, 16, 12, 12]):
+        total = 0
+        for ficha in linea.split():
+            if ficha.startswith("\\") or ficha.isdigit() or ficha == "F4":
+                continue
+            figura = ficha.rsplit(".", 1)[1]
+            total += int(duraciones[figura.replace("{d}", "")] * (1.5 if "{d}" in figura else 1))
+        assert total == pasos, linea
+
+    # Guitarra: acordes en partitura + tablatura; voz: solo pentagrama.
+    acorde = [{"inicio": 0.0, "fin": 2.0, "tono": t} for t in (40, 47, 52, 56, 59, 64)]   # Mi mayor abierto
+    g = alphatex.generar(acorde, mapa, 7.0, "guitarra", "x", "ambas")
+    assert "\\staff{score tabs}" in g["tex"] and "(0.1 0.2 1.3 2.4 2.5 0.6).1" in g["tex"]
+    v = alphatex.generar([{"inicio": 0.0, "fin": 1.0, "tono": 60}], mapa, 7.0, "voz", "x", "tablatura")
+    assert v["modo"] == "partitura" and not v["conTrastes"] and "36.6.2" in v["tex"]
+    with pytest.raises(ValueError):
+        alphatex.generar([], mapa, 7.0, "bajo", "x")

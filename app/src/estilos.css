@@ -94,7 +94,7 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .editor { flex: 1; overflow: auto; position: relative; background: #0d0f10; overscroll-behavior: none; }
 .lienzo { position: relative; min-height: 100%; }
 .fila { display: flex; position: relative; }
-.fila-regla { position: sticky; top: 0; z-index: 30; height: 70px; background: var(--panel); border-bottom: 1px solid var(--borde); }
+.fila-regla { position: sticky; top: 0; z-index: 30; height: 88px; background: var(--panel); border-bottom: 1px solid var(--borde); }
 .esquina {
   position: sticky; left: 0; z-index: 31; flex: 0 0 var(--ancho-cabecera); width: var(--ancho-cabecera);
   background: var(--panel); border-right: 1px solid var(--borde); display: flex; align-items: center;
@@ -310,3 +310,32 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
   font-size: 10.5px; font-weight: 700; line-height: 17px; color: #0b1012; opacity: .92;
 }
 .seccion-actual { font-size: 18px; min-height: 26px; letter-spacing: .02em; }
+
+/* ---------- fase 3: línea de bajo, partitura sincronizada y karaoke de notas ---------- */
+.esquina { align-items: stretch; }
+.leyenda-regla { flex: 1; display: grid; grid-template-rows: 26px 20px 22px 18px; align-items: center; font-size: 11px; }
+.esquina > .mono { align-self: flex-start; margin-top: 6px; }
+.bajo-carril { position: absolute; left: 0; right: 0; top: 68px; height: 18px; pointer-events: none; }
+.bajo-marca {
+  position: absolute; top: 1px; height: 15px; padding: 0 4px; border-left: 2px solid #a78bfa; overflow: hidden;
+  font: 600 10.5px var(--mono); line-height: 15px; color: #c4b5fd; white-space: nowrap; background: rgba(167,139,250,.10);
+}
+.ostinato-marca { position: absolute; bottom: 0; height: 2px; background: #a78bfa; opacity: .8; pointer-events: auto; }
+.acorde-marca.pedal { border-left-style: dotted; text-decoration: underline dotted #a78bfa; text-underline-offset: 3px; }
+
+.vista-partitura { display: flex; flex-direction: column; padding-bottom: 0; }
+.visor-partitura { flex: 1; overflow: auto; min-height: 0; }
+.visor-partitura .papel { position: relative; background: #fdfdfb; border-radius: 10px; padding: 10px; max-width: 1100px; margin: 0 auto 20px; min-height: 200px; }
+.cursor-partitura {
+  display: none; position: absolute; left: 10px; top: 10px; width: 3px; border-radius: 2px; pointer-events: none;
+  background: var(--menta-fuerte); box-shadow: 0 0 0 4px rgba(45,212,191,.22); will-change: transform; z-index: 5;
+}
+.aviso-visor { text-align: center; color: var(--tenue); padding: 20px; }
+.panel-tablatura { flex: 0 0 440px; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-left: 1px solid var(--borde); padding: 8px 6px 0; }
+.panel-tablatura .visor-partitura .papel { border-radius: 8px; margin-bottom: 8px; }
+
+.carril-notas { width: min(980px, 100%); height: 132px; display: block; border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--borde); }
+.karaoke .linea .palabra.sonando {
+  background-image: linear-gradient(90deg, var(--menta) var(--barrido, 0%), rgba(255,255,255,.32) var(--barrido, 0%));
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}

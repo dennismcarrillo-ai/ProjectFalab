@@ -55,6 +55,18 @@ convivir en el reproductor aunque ambas tengan «voz» o «bajo».
 El pedal MIDI se lee en el motor (python-rtmidi) porque el WebView de macOS no tiene Web MIDI; la
 interfaz recoge los mensajes con una petición que espera hasta que llega uno.
 
+## Partitura y tablatura sincronizadas
+
+alphaTab dibuja la notación, pero no reproduce: su reproductor está desactivado. El motor genera
+la partitura (`exportacion/alphatex.py`) haciendo que **cada compás escrito sea un compás real**
+del mapa de pulsos, con sus cambios de compás, y devuelve el instante en que empieza cada uno.
+El cursor se coloca con el reloj del procesador de audio: se busca el compás por tiempo y se
+pregunta a alphaTab dónde está dibujado. No hay un segundo reloj que pueda desincronizarse.
+
+Para que la interfaz no se congele, alphaTab se carga solo al abrir la vista, dibuja de forma
+perezosa los sistemas visibles, y tanto el cursor como el carril de notas del karaoke se
+actualizan sin volver a renderizar React.
+
 ## Decisiones tecnológicas
 
 | Decisión | Por qué |
@@ -124,8 +136,8 @@ El objetivo es que funcione con holgura en un equipo de 8 GB.
 9. **Exportación en el motor.** La mezcla final se renderiza en Python pista a pista, leyendo de
    disco solo los tramos usados. El EQ usa los mismos coeficientes bicuadráticos que Web Audio y
    el paneo la misma ley, así que el archivo suena como lo que se oye en la app.
-10. **Bibliotecas pesadas bajo demanda.** El grabador de partituras (1,2 MB) solo se carga al
-    abrir la vista Partitura.
+10. **Bibliotecas pesadas bajo demanda.** El grabador de partituras (1,3 MB) solo se carga al
+    abrir la partitura o el panel de tablatura.
 
 ## Formato de proyecto
 

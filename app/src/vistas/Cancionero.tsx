@@ -98,6 +98,11 @@ export function Cancionero() {
         <SelectorDetalle />
         <SelectorCifrado />
       </div>
+      {!editando && (analisis?.ostinatos.length ?? 0) > 0 && (
+        <p className="tenue" style={{ maxWidth: 900, margin: "0 auto 14px" }}>
+          Ostinato de bajo: {analisis!.ostinatos.map((o) => `${o.nombre} (×${o.repeticiones})`).join(" · ")}
+        </p>
+      )}
       {editando ? <EditorDeLetra segmentos={segmentos} alTerminar={() => fijarEditando(false)} /> : (
       <div className="cancionero">
         {lineas.length === 0 && <p className="tenue">No se detectaron letra ni acordes en este proyecto.</p>}

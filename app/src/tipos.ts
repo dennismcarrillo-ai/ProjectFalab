@@ -151,6 +151,31 @@ export interface Acorde {
   calidad: string;
   bajo: number | null;
   nombre: string;
+  /** El bajo mantiene esta nota mientras la armonía cambia por encima (nota pedal). */
+  pedal?: boolean;
+}
+
+/** Lo que toca el bajo, con independencia de los acordes. */
+export interface TramoDeBajo {
+  inicio: number;
+  fin: number;
+  nota: number;
+  nombre: string;
+}
+
+export interface Ostinato {
+  inicio: number;
+  fin: number;
+  patron: number[];
+  repeticiones: number;
+  nombre: string;
+}
+
+export interface Nota {
+  inicio: number;
+  fin: number;
+  tono: number;
+  velocidad: number;
 }
 
 export interface Palabra {
@@ -181,6 +206,8 @@ export interface Analisis {
   secciones: Seccion[];
   tonalidad: Tonalidad;
   acordes: Acorde[];
+  lineaBajo: TramoDeBajo[];
+  ostinatos: Ostinato[];
   letras: { idioma: string | null; segmentos: SegmentoLetra[] };
   cancionero: LineaCancionero[];
   pistasConNotas: string[];
