@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { usarApp, usarReproduccion } from "../estado/almacen";
+import { MezclaRapida } from "./MezclaRapida";
 import { formatearSemitonos, formatearTiempo } from "../util/formato";
 import { IconoBucle, IconoDetener, IconoIman, IconoMetronomo, IconoPausa, IconoReproducir } from "../util/iconos";
 
@@ -164,6 +165,7 @@ export function Transporte() {
       <button onClick={() => fijar({ dialogo: "estructura" })} title="Marcadores de ensayo, compás por sección y guías de voz">
         Estructura
       </button>
+      {vista !== "editor" && <MezclaRapida />}
       {vista === "editor" && (
         <>
           <button className={iman ? "activo" : ""} onClick={() => fijar({ iman: !iman })}

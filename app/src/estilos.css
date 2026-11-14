@@ -366,3 +366,14 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .insignia { font-size: 10.5px; padding: 2px 8px; border-radius: 9px; background: var(--panel-3); color: var(--tenue); white-space: nowrap; }
 .insignia.sugerido { background: rgba(94,234,212,.16); color: var(--menta); }
 .insignia.experimental { background: rgba(251,191,36,.16); color: var(--ambar); margin-left: 6px; }
+
+/* ---------- mezcla rápida (karaoke, cancionero y partitura) ---------- */
+.mezcla-rapida { position: relative; }
+.panel-mezcla {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 65; width: 340px; padding: 10px;
+  display: flex; flex-direction: column; gap: 4px; background: rgba(28,32,36,.96);
+}
+.fila-mezcla { display: flex; align-items: center; gap: 8px; }
+.fila-mezcla .punto-color { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.fila-mezcla .nombre { flex: 0 0 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.fila-mezcla input[type="range"] { flex: 1; min-width: 0; }
