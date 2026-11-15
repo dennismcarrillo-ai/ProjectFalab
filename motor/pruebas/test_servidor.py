@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -187,3 +188,39 @@ def test_guardado_automatico_en_drive_con_cola_y_reintentos(carpeta_de_datos, mo
     hay_red["valor"] = True
     assert drive.sincronizar_pendientes(despues) == 1                 # vuelve la red: se sube
     assert subidas == [p["id"]] and drive.estado()["pendientes"] == [] and drive.estado()["ultimoError"] is None
+
+
+def test_el_paquete_lleva_los_datos_resueltos_para_el_reproductor(carpeta_de_datos, tmp_path):
+    import json, zipfile
+    from falab_motor import paquete, proyecto as modelo
+    from falab_motor.pipeline import acordes as modulo_acordes
+    from falab_motor.trabajos import Trabajo
+
+    p = demo.crear_proyecto(vueltas=2)
+    ruta = paquete.exportar(p["id"], tmp_path, Trabajo(id="t", tipo="exportar"))["archivos"][0]
+    with zipfile.ZipFile(ruta) as z:
+        assert all(i.compress_type == zipfile.ZIP_STORED for i in z.infolist())   # legible por tramos, sin descomprimir
+        datos = json.loads(z.read("reproductor.json"))
+        assert "stems/bajo.flac" in z.namelist()
+    assert datos["version"] == 1 and len(datos["mapaTempo"]["pulsos"]) > 20
+    assert datos["pistasConNotas"] == ["bajo", "guitarra", "piano", "voz"] and datos["notasVoz"]
+    assert set(datos["partituras"]["bajo"]) == {"ambas", "partitura", "tablatura"}
+    assert set(datos["partituras"]["voz"]) == {"partitura"}
+    assert "\\staff{tabs}" in datos["partituras"]["bajo"]["tablatura"]["tex"]
+    assert datos["partituras"]["bajo"]["tablatura"]["compases"][0]["inicio"] < 0.1
+
+    # El cancionero referencia acordes por índice: con sus nombres debe coincidir con el del escritorio.
+    cliente = TestClient(servidor.app)
+    escritorio = cliente.get(f"/proyectos/{p['id']}/analisis").json()
+    nombres = [a["nombre"] for a in escritorio["acordes"]]
+    assert len(datos["cancionero"]) == len(escritorio["cancionero"])
+    for movil, original in zip(datos["cancionero"], escritorio["cancionero"]):
+        if movil["tipo"] == "instrumental":
+            assert "| " + " | ".join(nombres[i] for i in movil["acordes"]) + " |" == original["texto"]
+        else:
+            assert movil["texto"] == original["texto"]
+            assert [(m["columna"], nombres[m["acorde"]]) for m in movil["acordes"]] == [
+                (m["columna"], m["nombre"]) for m in original["acordes"]]
+    # Al importar en el escritorio, ese archivo no se queda en el proyecto.
+    hecho = paquete.importar(Path(ruta), Trabajo(id="t", tipo="importar"))
+    assert not (modelo.carpeta(hecho["id"]) / "reproductor.json").exists()

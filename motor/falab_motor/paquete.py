@@ -14,6 +14,73 @@ EXTENSION = ".falab"
 NO_EMPAQUETAR = {"exportaciones", "picos"}  # se regeneran al importar
 
 
+def datos_para_reproductor(id_proyecto: str) -> dict:
+    """Todo lo que el reproductor móvil necesita y que en el escritorio calcula el motor al vuelo.
+
+    El iPad no tiene Python: aquí se deja ya resuelto el mapa de pulsos con sus compases, el
+    cancionero (con referencias a los acordes, para poder cambiar de cifrado y transponer allí) y
+    la partitura y tablatura de cada instrumento. Los nombres de los acordes NO se guardan: el
+    reproductor los escribe según el cifrado y el tono que elija el usuario.
+    """
+    from .exportacion import alphatex, cancionero
+    from .pipeline import estructura
+
+    p = modelo.cargar(id_proyecto)
+    acordes = modelo.leer_analisis(id_proyecto, "acordes", {}) or {}
+    letras = modelo.leer_analisis(id_proyecto, "letras", {"idioma": None, "segmentos": []})
+    notas = modelo.leer_analisis(id_proyecto, "notas", {}) or {}
+    secciones = (modelo.leer_analisis(id_proyecto, "estructura", {}) or {}).get("secciones", [])
+    mapa = modelo.leer_analisis(id_proyecto, "mapa_tempo", {"bpm": p["bpm"], "compas": p["compas"], "pulsos": []})
+    mapa = estructura.aplicar_compases(mapa, secciones)
+
+    # Cancionero con ÍNDICES de acorde en lugar de nombres (el índice hace de «nombre» único).
+    lista = acordes.get("acordes", [])
+    identidad = {}
+    numerados = []
+    for acorde in lista:
+        clave = (acorde["raiz"], acorde["calidad"], acorde.get("bajo"))
+        identidad.setdefault(clave, len(identidad))
+        numerados.append({**acorde, "nombre": f"#{identidad[clave]}"})
+    primero_de = {}
+    for i, a in enumerate(numerados):
+        primero_de.setdefault(a["nombre"], i)
+    lineas = []
+    for linea in cancionero.construir(letras, numerados, p["duracion"]):
+        if linea["tipo"] == "instrumental":
+            indices = [primero_de[n] for n in linea["texto"].strip("| ").split(" | ") if n in primero_de]
+            lineas.append({"tipo": "instrumental", "inicio": linea["inicio"], "fin": linea["fin"], "acordes": indices})
+        else:
+            lineas.append({**linea, "acordes": [{"columna": m["columna"], "t": m["t"], "acorde": primero_de[m["nombre"]]}
+                                                for m in linea["acordes"]]})
+
+    partituras: dict[str, dict] = {}
+    for instrumento, lista_notas in notas.items():
+        if not lista_notas:
+            continue
+        modos = ("ambas", "partitura", "tablatura") if instrumento in alphatex.AFINACION_TEX else ("partitura",)
+        partituras[instrumento] = {}
+        for modo in modos:
+            try:
+                partituras[instrumento][modo] = alphatex.generar(lista_notas, mapa, p["duracion"], instrumento, p["nombre"], modo)
+            except ValueError:
+                pass
+    return {
+        "version": 1,
+        "mapaTempo": mapa,
+        "secciones": secciones,
+        "tonalidad": acordes.get("tonalidad") or {"tonica": 0, "modo": "mayor", "bemoles": False},
+        "acordes": lista,
+        "lineaBajo": acordes.get("lineaBajo", []),
+        "ostinatos": acordes.get("ostinatos", []),
+        "detalleAcordes": acordes.get("detalle", "normal"),
+        "letras": letras,
+        "cancionero": lineas,
+        "notasVoz": notas.get("voz", []),
+        "pistasConNotas": [k for k, v in notas.items() if v],
+        "partituras": partituras,
+    }
+
+
 def exportar(id_proyecto: str, destino: Path | None, trabajo: Trabajo) -> dict:
     p = modelo.cargar(id_proyecto)
     carpeta = modelo.carpeta(id_proyecto)
@@ -28,6 +95,8 @@ def exportar(id_proyecto: str, destino: Path | None, trabajo: Trabajo) -> dict:
         for i, ruta in enumerate(archivos):
             trabajo.informar(i / max(1, len(archivos)), f"Empaquetando {ruta.name}")
             paquete.write(ruta, ruta.relative_to(carpeta).as_posix())
+        # Datos ya resueltos para el reproductor del iPad (que no tiene motor de análisis).
+        paquete.writestr("reproductor.json", json.dumps(datos_para_reproductor(id_proyecto), ensure_ascii=False))
     return {"archivos": [str(salida)]}
 
 
@@ -59,8 +128,8 @@ def importar(ruta_paquete: Path, trabajo: Trabajo) -> dict:
                 # Nunca escribir fuera de la carpeta del proyecto, diga lo que diga el ZIP.
                 if raiz not in destino.parents and destino != raiz:
                     raise ValueError("El archivo contiene rutas no permitidas.")
-                if nombre.endswith("/"):
-                    continue
+                if nombre.endswith("/") or nombre == "reproductor.json":
+                    continue  # reproductor.json es solo para el iPad; el escritorio lo recalcula
                 destino.parent.mkdir(parents=True, exist_ok=True)
                 with paquete.open(nombre) as origen, open(destino, "wb") as salida:
                     shutil.copyfileobj(origen, salida)

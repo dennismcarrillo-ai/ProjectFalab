@@ -1,20 +1,31 @@
-//! Carcasa de escritorio de falab.
+//! Carcasa de falab.
 //!
-//! Responsabilidades (deliberadamente pocas, para que la app pese y consuma poco):
+//! En el ESCRITORIO (macOS, Windows, Linux) tiene dos responsabilidades, deliberadamente pocas:
 //!  1. Arrancar el motor local de Python como proceso hijo y cerrarlo al salir.
 //!  2. Hacer de puente entre la interfaz y el motor (`peticion_motor`). El testigo de sesión
 //!     vive solo aquí: la interfaz web nunca lo ve y ningún otro programa puede usar el motor.
+//!
+//! En el iPAD (y demás móviles) no hay motor: la app es un reproductor que lee los proyectos
+//! .falab con el complemento de archivos, y esta carcasa solo abre la ventana.
 
+#[cfg(desktop)]
 use std::fs::{self, File};
+#[cfg(desktop)]
 use std::io::{BufRead, BufReader, Read};
+#[cfg(desktop)]
 use std::path::PathBuf;
+#[cfg(desktop)]
 use std::process::{Child, Command, Stdio};
+#[cfg(desktop)]
 use std::sync::{Arc, Mutex};
+#[cfg(desktop)]
 use std::time::{Duration, Instant};
 
 use tauri::ipc::Response;
+#[cfg(desktop)]
 use tauri::{Manager, RunEvent, State};
 
+#[cfg(desktop)]
 #[derive(Default)]
 struct Motor {
     hijo: Mutex<Option<Child>>,
@@ -23,6 +34,7 @@ struct Motor {
     testigo: String,
 }
 
+#[cfg(desktop)]
 fn carpeta_de_datos() -> PathBuf {
     if let Ok(ruta) = std::env::var("FALAB_DIR") {
         return PathBuf::from(ruta);
@@ -31,6 +43,7 @@ fn carpeta_de_datos() -> PathBuf {
     PathBuf::from(casa).join("Falab")
 }
 
+#[cfg(desktop)]
 /// Localiza el intérprete de Python del entorno virtual del motor.
 fn python_del_motor() -> Result<PathBuf, String> {
     if let Ok(ruta) = std::env::var("FALAB_PYTHON") {
@@ -55,6 +68,7 @@ fn python_del_motor() -> Result<PathBuf, String> {
     ))
 }
 
+#[cfg(desktop)]
 fn arrancar_motor(motor: &Motor) -> Result<(), String> {
     let python = python_del_motor()?;
     let datos = carpeta_de_datos();
@@ -93,6 +107,7 @@ fn arrancar_motor(motor: &Motor) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 /// Reenvía una petición de la interfaz al motor local y devuelve el cuerpo en binario.
 #[tauri::command]
 async fn peticion_motor(
@@ -152,21 +167,34 @@ async fn peticion_motor(
     .map(Response::new)
 }
 
+#[cfg(desktop)]
 /// Espera sin bloquear el hilo de la interfaz.
 async fn tokio_dormir(duracion: Duration) {
     let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(duracion)).await;
 }
 
+/// En el reproductor móvil no hay motor al que reenviar nada.
+#[cfg(mobile)]
+#[tauri::command]
+async fn peticion_motor(_metodo: String, _ruta: String, _cuerpo: Option<String>) -> Result<Response, String> {
+    Err("Esta función solo está disponible en falab para Mac.".into())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn ejecutar() {
-    let motor = Motor {
-        testigo: format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple()),
-        ..Default::default()
-    };
-    tauri::Builder::default()
+    let constructor = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(motor)
-        .setup(|app| {
+        .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![peticion_motor]);
+
+    #[cfg(desktop)]
+    let constructor = {
+        let motor = Motor {
+            testigo: format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple()),
+            ..Default::default()
+        };
+        constructor.manage(motor).setup(|app| {
             let motor = app.state::<Motor>();
             if let Err(error) = arrancar_motor(&motor) {
                 // No se aborta: la interfaz muestra el error y cómo resolverlo.
@@ -174,12 +202,15 @@ pub fn ejecutar() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![peticion_motor])
+    };
+
+    constructor
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar falab")
-        .run(|app, evento| {
-            if let RunEvent::Exit = evento {
-                if let Some(mut hijo) = app.state::<Motor>().hijo.lock().unwrap().take() {
+        .run(|_app, _evento| {
+            #[cfg(desktop)]
+            if let RunEvent::Exit = _evento {
+                if let Some(mut hijo) = _app.state::<Motor>().hijo.lock().unwrap().take() {
                     let _ = hijo.kill();
                     let _ = hijo.wait();
                 }

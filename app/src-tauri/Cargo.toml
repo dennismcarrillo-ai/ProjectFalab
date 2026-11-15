@@ -15,7 +15,12 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+# Lectura por tramos de los proyectos .falab en el reproductor de iPad.
+tauri-plugin-fs = "2"
 serde_json = "1"
+
+# El puente con el motor Python solo existe en el escritorio.
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
 ureq = "2"
 uuid = { version = "1", features = ["v4"] }
 

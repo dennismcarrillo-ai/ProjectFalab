@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- La carpeta de la app aparece en «Archivos» (En mi iPad → falab): ahí se dejan los .falab. -->
+  <key>UIFileSharingEnabled</key>
+  <true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key>
+  <true/>
+  <!-- El audio sigue sonando con la pantalla bloqueada o la app en segundo plano. -->
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>audio</string>
+  </array>
+</dict>
+</plist>

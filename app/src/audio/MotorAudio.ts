@@ -110,6 +110,9 @@ export class MotorAudio {
       return;
     }
     // Misma frecuencia que los stems: el procesador no necesita remuestrear nada.
+    // En iPhone y iPad, sin esto el audio respeta el interruptor de silencio y se corta al bloquear.
+    const sesion = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (sesion) sesion.type = "playback";
     const contexto = new AudioContext({ sampleRate: FRECUENCIA, latencyHint: "interactive" });
     await contexto.audioWorklet.addModule("/worklets/falab-procesador.js");
     const nodo = new AudioWorkletNode(contexto, "falab-procesador", {

@@ -10,12 +10,15 @@ import { Transporte } from "./componentes/Transporte";
 import { DialogoGrabacion, VentanaVideo, VistaPreviaDeCamara } from "./componentes/Video";
 import { usarApp, usarReproduccion, type Vista } from "./estado/almacen";
 import { IconoExportar, IconoNube } from "./util/iconos";
+import { enReproductor } from "./servicios/motor";
 import { Cancionero } from "./vistas/Cancionero";
+import { Mezcla } from "./vistas/Mezcla";
 import { Karaoke } from "./vistas/Karaoke";
 import { Partitura } from "./vistas/Partitura";
 
 const VISTAS: { id: Vista; nombre: string }[] = [
-  { id: "editor", nombre: "Editor" },
+  // En el reproductor (iPad) no hay editor: su lugar lo ocupa el mezclador.
+  { id: "editor", nombre: enReproductor ? "Mezcla" : "Editor" },
   { id: "karaoke", nombre: "Karaoke" },
   { id: "cancionero", nombre: "Cancionero" },
   { id: "partitura", nombre: "Partitura" },
@@ -79,6 +82,22 @@ function usarAtajos() {
   }, []);
 }
 
+/** Mientras suena, la pantalla no se apaga (importante con la tableta en el atril). */
+function usarPantallaDespierta() {
+  const sonando = usarReproduccion((s) => s.estado !== "detenido");
+  useEffect(() => {
+    const bloqueo = (navigator as Navigator & { wakeLock?: { request(tipo: "screen"): Promise<{ release(): Promise<void> }> } }).wakeLock;
+    if (!sonando || !bloqueo) return;
+    let activo: { release(): Promise<void> } | null = null;
+    let cancelado = false;
+    bloqueo.request("screen").then((b) => (cancelado ? void b.release() : (activo = b))).catch(() => undefined);
+    return () => {
+      cancelado = true;
+      void activo?.release().catch(() => undefined);
+    };
+  }, [sonando]);
+}
+
 export function App() {
   const proyecto = usarApp((s) => s.proyecto);
   const vista = usarApp((s) => s.vista);
@@ -101,6 +120,7 @@ export function App() {
   const anterior = indice > 0 ? cola[indice - 1] : undefined;
   const siguiente = indice >= 0 ? cola[indice + 1] : undefined;
   usarAtajos();
+  usarPantallaDespierta();
   useEffect(() => void conectar(), [conectar]);
 
   let contenido;
@@ -130,7 +150,7 @@ export function App() {
             </aside>
           )}
           <div className="zona-vista">
-            {vista === "editor" && <Editor />}
+            {vista === "editor" && (enReproductor ? <Mezcla /> : <Editor />)}
             {vista === "karaoke" && <Karaoke />}
             {vista === "cancionero" && <Cancionero />}
             {vista === "partitura" && <Partitura />}
@@ -143,7 +163,7 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${enReproductor ? "tactil" : ""}`}>
       <header className="barra-superior">
         <div className="marca"><img src="/icono.svg" alt="" />falab</div>
         {proyecto && (
@@ -162,7 +182,7 @@ export function App() {
             </nav>
             <span className="crecer" />
             <span className="estado-guardado">{TEXTO_GUARDADO[guardado]}</span>
-            {hayVideo && (
+            {hayVideo && !enReproductor && (
               <button className={ventanaVideo ? "activo" : ""} aria-pressed={!!ventanaVideo} title="Ventana de video sincronizada (V)"
                 onClick={() => fijar({ ventanaVideo: ventanaVideo ? null : proyecto!.medioOriginal.tieneVideo ? "original" : proyecto!.videos![0].id })}>
                 Video
@@ -171,9 +191,13 @@ export function App() {
             <button className={panelTablatura ? "activo" : ""} aria-pressed={panelTablatura} disabled={vista === "partitura"}
               onClick={() => fijar({ panelTablatura: !panelTablatura })} title="Tablatura sincronizada en un panel lateral (T)">Tablatura</button>
             <button onClick={() => fijar({ dialogo: "pedal" })} title="Asignar un pedal MIDI o de teclado">Pedal</button>
-            <button onClick={() => fijar({ dialogo: "drive" })} title="Sincronizar con Google Drive"><IconoNube /> Drive</button>
-            <button className="primario" onClick={() => fijar({ dialogo: "exportar" })}><IconoExportar /> Exportar</button>
-            <button className="plano" onClick={() => void cerrar()}>Cerrar proyecto</button>
+            {!enReproductor && (
+              <>
+                <button onClick={() => fijar({ dialogo: "drive" })} title="Sincronizar con Google Drive"><IconoNube /> Drive</button>
+                <button className="primario" onClick={() => fijar({ dialogo: "exportar" })}><IconoExportar /> Exportar</button>
+              </>
+            )}
+            <button className="plano" onClick={() => void cerrar()}>{enReproductor ? "Canciones" : "Cerrar proyecto"}</button>
           </>
         )}
       </header>

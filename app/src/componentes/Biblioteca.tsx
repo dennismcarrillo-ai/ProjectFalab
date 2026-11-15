@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { usarApp } from "../estado/almacen";
-import { enEscritorio } from "../servicios/motor";
+import { enEscritorio, enReproductor } from "../servicios/motor";
 import type { OrdenPlaylist, ResumenProyecto } from "../tipos";
 import { formatearPeso, NOMBRES_ORDEN } from "../util/biblioteca";
 import { formatearTiempo } from "../util/formato";
@@ -144,9 +144,11 @@ function FilaDeProyecto({ p, posicion, compacta }: { p: ResumenProyecto; posicio
             ))}
           </select>
         )}
-        <button className="plano" title="Guardar el proyecto completo en un archivo .falab" onClick={() => void exportar()}>Exportar</button>
+        {!enReproductor && (
+          <button className="plano" title="Guardar el proyecto completo en un archivo .falab" onClick={() => void exportar()}>Exportar</button>
+        )}
         <button className="plano" title="Eliminar el proyecto de este equipo" onClick={() => {
-          if (window.confirm(`¿Eliminar «${p.nombre}» de este equipo? No se puede deshacer.`)) void eliminarProyecto(p.id);
+          if (window.confirm(`¿Eliminar «${p.nombre}» de este ${enReproductor ? "dispositivo" : "equipo"}? No se puede deshacer.`)) void eliminarProyecto(p.id);
         }}>Eliminar</button>
       </span>
     </div>

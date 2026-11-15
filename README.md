@@ -96,6 +96,11 @@ cd motor && .venv/bin/python -m falab_motor --puerto 8765
 cd app && npm run dev
 ```
 
+## iPad
+
+Hay una versión para iPad que funciona como reproductor de los proyectos ya analizados en la Mac
+(mezcla, karaoke, cancionero, partitura, tablatura y show continuo). Ver [docs/IPAD.md](docs/IPAD.md).
+
 ## Pruebas
 
 ```bash
@@ -110,13 +115,14 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (35 pruebas automáticas) |
-| Edición, EQ, reproductor y orden de playlists | Probado (37 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (38 pruebas automáticas) |
+| Edición, EQ, reproductor y orden de playlists | Probado (51 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
 | Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
 | Pedal MIDI y voz de las guías | La lógica está probada con mensajes y voz simulados; **pendiente de confirmar** con un pedal real y con la voz de macOS |
 | Grabación de micrófono y cámara, y video flotante | Probado en Chromium con dispositivos simulados; **pendiente de confirmar** en la app de macOS (permisos del sistema y acceso al video) |
 | Pre-análisis y división de coros y guitarras | Probado con un separador simulado; **pendiente de confirmar** con Demucs y música real. El separador neuronal de coros (`--con-coros`) no se ha ejecutado nunca |
+| Reproductor para iPad | Probado en un navegador con proyectos reales y sin motor; **pendiente de compilar para iOS y de probar en un iPad** |
 | Google Drive (subida, descarga y guardado automático) | La cola automática está probada con un Drive simulado; **pendiente de confirmar** contra Drive real |
 
 ## Limitaciones conocidas

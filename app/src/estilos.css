@@ -377,3 +377,34 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .fila-mezcla .punto-color { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
 .fila-mezcla .nombre { flex: 0 0 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .fila-mezcla input[type="range"] { flex: 1; min-width: 0; }
+
+/* ---------- reproductor (iPad): controles para el dedo ---------- */
+.app.tactil { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.app.tactil button, .app.tactil select { min-height: 40px; padding: 8px 14px; font-size: 14px; }
+.app.tactil .boton-redondo { width: 46px; height: 46px; min-height: 46px; padding: 0; }
+.app.tactil .boton-redondo.reproducir { width: 56px; height: 56px; }
+.app.tactil .paso { width: 40px; min-height: 40px; padding: 0; }
+.app.tactil .boton-mini { width: 40px; height: 36px; min-height: 36px; padding: 0; font-size: 13px; }
+.app.tactil input[type="range"] { height: 30px; }
+.app.tactil .pestanas button { padding: 8px 16px; }
+.app.tactil .panel-mezcla { width: 420px; }
+.app.tactil .proyecto-compacto, .app.tactil .playlist-fila, .app.tactil .proyecto-fila { min-height: 48px; }
+.vista-mezcla { flex: 1; overflow: auto; padding: 22px; display: flex; flex-direction: column; gap: 22px; }
+.recorrido-caja { max-width: 1200px; width: 100%; margin: 0 auto; }
+.recorrido { position: relative; height: 56px; border-radius: 12px; background: var(--panel-2); overflow: hidden; cursor: pointer; touch-action: none; }
+.recorrido .tramo {
+  position: absolute; top: 0; bottom: 0; padding: 6px 8px; font-size: 11.5px; font-weight: 700; color: #0b1012; opacity: .5;
+  overflow: hidden; white-space: nowrap; border-right: 1px solid rgba(0,0,0,.35);
+}
+.recorrido .hecho { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,255,255,.22); pointer-events: none; }
+.recorrido .aguja { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 8px rgba(255,255,255,.7); pointer-events: none; }
+.recorrido-caja .tiempos { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; }
+.canales { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; max-width: 1200px; width: 100%; margin: 0 auto; }
+.canal { background: var(--panel); border: 1px solid var(--borde); border-top: 4px solid; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.canal .nombre { font-size: 15px; }
+.canal .botones { display: flex; gap: 8px; }
+.canal .botones button { flex: 1; font-weight: 700; }
+.canal .botones .silencio.activo { background: #7f1d1d; border-color: #b91c1c; color: #fecaca; }
+.canal .botones .solo.activo { background: #713f12; border-color: #ca8a04; color: #fef08a; }
+.canal label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--tenue); }
+.canal label span { align-self: flex-end; margin-top: -16px; }

@@ -1,13 +1,57 @@
 import { useEffect, useRef, useState } from "react";
 import { usarApp } from "../estado/almacen";
-import { enEscritorio, type OpcionesImportar } from "../servicios/motor";
+import { enEscritorio, enReproductor, type OpcionesImportar } from "../servicios/motor";
 import { Biblioteca } from "./Biblioteca";
 import { IconoNube } from "../util/iconos";
 
 const EXTENSIONES = ["mp3", "wav", "flac", "ogg", "aac", "m4a", "mp4", "mov", "mkv", "falab"];
 
+/** Inicio del reproductor (iPad): añadir proyectos ya analizados en la Mac y abrirlos. */
+function InicioDelReproductor() {
+  const { anadirProyectos, refrescarProyectos } = usarApp.getState();
+  const hay = usarApp((s) => s.proyectos.length > 0);
+  const ref = useRef<HTMLInputElement>(null);
+  const enApp = "__TAURI_INTERNALS__" in window;
+  return (
+    <div className="inicio">
+      <div className="portada vidrio">
+        <img src="/icono.svg" alt="" />
+        <div>
+          <h1>falab</h1>
+          <p>Reproductor para ensayar y tocar en directo: mezcla, karaoke, cancionero, partitura y tablatura de las
+            canciones que analizaste con falab en tu Mac.</p>
+        </div>
+      </div>
+      <div className="zona-soltar vidrio">
+        <strong>{hay ? "Añadir más canciones" : "Aún no hay canciones en este dispositivo"}</strong>
+        <div className="tenue" style={{ maxWidth: 620, margin: "6px auto 0" }}>
+          {enApp
+            ? "En la Mac, exporta cada proyecto desde la biblioteca de falab («Exportar»). Pasa los archivos .falab al iPad (AirDrop, iCloud o cable) y guárdalos en la app Archivos, dentro de «En mi iPad → falab»."
+            : "Elige proyectos exportados desde falab (.falab). En el navegador se abren solo durante esta sesión."}
+        </div>
+        <div className="acciones">
+          {enApp
+            ? <button className="primario" onClick={() => void refrescarProyectos()}>Actualizar la lista</button>
+            : <button className="primario" onClick={() => ref.current?.click()}>Elegir proyectos…</button>}
+        </div>
+        <input ref={ref} type="file" hidden multiple accept=".falab" aria-label="Proyectos de falab"
+          onChange={(e) => {
+            const archivos = [...(e.target.files ?? [])];
+            if (archivos.length) void anadirProyectos(archivos);
+            e.target.value = "";
+          }} />
+      </div>
+      <Biblioteca />
+    </div>
+  );
+}
+
 /** Pantalla de inicio: importar una canción o un video y abrir proyectos anteriores. */
 export function Inicio() {
+  return enReproductor ? <InicioDelReproductor /> : <InicioDeEscritorio />;
+}
+
+function InicioDeEscritorio() {
   const salud = usarApp((s) => s.salud);
   const { prepararImportacion: importar, crearDemo, fijar } = usarApp.getState();
   const [encima, fijarEncima] = useState(false);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { usarApp, usarReproduccion } from "../estado/almacen";
+import { enReproductor } from "../servicios/motor";
 import { MezclaRapida } from "./MezclaRapida";
 import { formatearSemitonos, formatearTiempo } from "../util/formato";
 import { IconoBucle, IconoDetener, IconoIman, IconoMetronomo, IconoPausa, IconoReproducir } from "../util/iconos";
@@ -76,6 +77,7 @@ export function Transporte() {
         >
           {estado === "detenido" ? <IconoReproducir /> : <IconoPausa />}
         </button>
+        {!enReproductor && <>
         <button className={`boton-redondo grabar ${grabacion ? "activo" : ""}`} aria-pressed={!!grabacion}
           onClick={() => void usarApp.getState().alternarGrabacion()}
           disabled={grabacion?.estado === "preparando" || grabacion?.estado === "guardando"}
@@ -85,6 +87,7 @@ export function Transporte() {
         </button>
         <button className="plano paso" onClick={() => fijar({ dialogo: "grabacion" })}
           title="Opciones de grabación: micrófono, cámara y latencia" aria-label="Opciones de grabación">⚙</button>
+        </>}
       </div>
       <Reloj />
       {grabacion && <span className="estado-grabacion">{textoDeGrabacion[grabacion.estado]}</span>}
@@ -155,18 +158,22 @@ export function Transporte() {
       </div>
       <div className="separador" />
 
-      <button className={bucle ? "activo" : ""} onClick={alternarBucle} title="Repetir el tramo marcado en la regla (L)">
-        <IconoBucle />
-      </button>
+      {!enReproductor && (
+        <button className={bucle ? "activo" : ""} onClick={alternarBucle} title="Repetir el tramo marcado en la regla (L)">
+          <IconoBucle />
+        </button>
+      )}
       <button className={show ? "activo" : ""} onClick={alternarShow} aria-pressed={show}
         title="Show continuo: al terminar, empieza la canción siguiente de la lista sin cortes">
         Show
       </button>
-      <button onClick={() => fijar({ dialogo: "estructura" })} title="Marcadores de ensayo, compás por sección y guías de voz">
-        Estructura
-      </button>
+      {!enReproductor && (
+        <button onClick={() => fijar({ dialogo: "estructura" })} title="Marcadores de ensayo, compás por sección y guías de voz">
+          Estructura
+        </button>
+      )}
       {vista !== "editor" && <MezclaRapida />}
-      {vista === "editor" && (
+      {vista === "editor" && !enReproductor && (
         <>
           <button className={iman ? "activo" : ""} onClick={() => fijar({ iman: !iman })}
             title="Imán: ajustar a pulsos y bordes de clips (Alt lo desactiva al arrastrar)">

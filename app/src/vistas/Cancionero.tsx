@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { usarApp, usarReproduccion } from "../estado/almacen";
+import { enReproductor } from "../servicios/motor";
 import type { Cifrado, DetalleAcordes, LineaCancionero, SegmentoLetra } from "../tipos";
 import { formatearTiempo } from "../util/formato";
 
@@ -94,8 +95,8 @@ export function Cancionero() {
         <strong style={{ fontSize: 18 }}>{proyecto.nombre}</strong>
         <span className="tenue">Tonalidad: {analisis?.tonalidad.nombre ?? "—"} · {Math.round(proyecto.bpm)} BPM</span>
         <span className="crecer" />
-        {!editando && segmentos.length > 0 && <button onClick={() => fijarEditando(true)}>Editar letra</button>}
-        <SelectorDetalle />
+        {!enReproductor && !editando && segmentos.length > 0 && <button onClick={() => fijarEditando(true)}>Editar letra</button>}
+        {!enReproductor && <SelectorDetalle />}
         <SelectorCifrado />
       </div>
       {!editando && (analisis?.ostinatos.length ?? 0) > 0 && (

@@ -28,10 +28,29 @@ export interface EstadoDrive {
   ultimaSincronizacion: string | null;
 }
 
-export const enEscritorio = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const enTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/**
+ * Modo reproductor: en tabletas y teléfonos no hay motor de análisis; la app abre proyectos ya
+ * analizados (.falab) y los reproduce. Se puede forzar en un navegador con `?reproductor=1`.
+ */
+function detectarReproductor(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (new URLSearchParams(window.location.search).has("reproductor")) return true;
+  if (/iPad|iPhone|iPod|Android/i.test(navigator.userAgent)) return true;
+  // El iPad se presenta como un Mac: se distingue porque tiene pantalla táctil.
+  return enTauri && /Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+}
+export const enReproductor = detectarReproductor();
+/** App de escritorio con motor Python (ni navegador ni reproductor móvil). */
+export const enEscritorio = enTauri && !enReproductor;
 const URL_NAVEGADOR: string = import.meta.env?.VITE_MOTOR_URL ?? "http://127.0.0.1:8765";
 
 async function crudo(metodo: string, ruta: string, cuerpo?: unknown): Promise<ArrayBuffer> {
+  if (enReproductor) {
+    const { motorLocal } = await import("../reproductor/motorLocal");
+    return motorLocal.atender(metodo, ruta, cuerpo);
+  }
   if (enEscritorio) {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<ArrayBuffer>("peticion_motor", {

@@ -166,3 +166,12 @@ def test_video_original_toma_de_camara_y_exportacion(carpeta_de_datos, tmp_path)
     assert abs(d["audio"][1] - 3.0) < 0.2           # …y el audio es la mezcla completa
     assert _esperar(cliente, cliente.post(f"/proyectos/{id_proyecto}/exportar",
                                           json={"tipo": "video", "video": "camara_9"}).json())["estado"] == "error"
+
+
+def test_la_reverb_incluida_en_la_app_es_la_misma_que_la_del_motor():
+    """El reproductor de iPad no tiene motor: lleva la respuesta al impulso como archivo."""
+    from pathlib import Path
+
+    incluida = Path(__file__).resolve().parents[2] / "app" / "public" / "reverb-ir.f32"
+    datos = np.frombuffer(incluida.read_bytes(), dtype="<f4").reshape(-1, 2)
+    np.testing.assert_array_equal(datos, reverb.respuesta_al_impulso())

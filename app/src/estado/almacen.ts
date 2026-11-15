@@ -6,7 +6,7 @@ import {
   copiarClips, copiarRango, dividir, eliminar, finDe, pegar, quitarRango,
 } from "../edicion/operaciones";
 import {
-  motor, seguirTrabajo, type EventoMidi, type OpcionesImportar, type PeticionExportar,
+  enReproductor, motor, seguirTrabajo, type EventoMidi, type OpcionesImportar, type PeticionExportar,
 } from "../servicios/motor";
 import type {
   AccionPedal, Analisis, AsignacionPedal, Cifrado, Clip, DetalleAcordes, Disparador, Ecualizador, OrdenPlaylist,
@@ -89,6 +89,8 @@ interface EstadoApp {
   cerrar(): Promise<void>;
   eliminarProyecto(id: string): Promise<void>;
   importar(origen: string | File, opciones: OpcionesImportar): Promise<void>;
+  /** Reproductor (iPad): añade proyectos .falab elegidos a mano y actualiza la biblioteca. */
+  anadirProyectos(archivos: File[]): Promise<void>;
   /** Canción escuchada y pendiente de que el usuario confirme qué pistas separar. */
   importacion: null | { ruta: string; nombre: string; opciones: OpcionesImportar; previo: Preanalisis };
   /** Escucha la canción y abre el diálogo de sugerencias; si no hay nada que proponer, importa sin más. */
@@ -346,7 +348,7 @@ export const usarApp = create<EstadoApp>((set, get) => {
     proyecto: null,
     analisis: null,
     cifrado: "estandar",
-    vista: "editor",
+    vista: enReproductor ? "karaoke" : "editor",
     dialogo: null,
     clipsSeleccionados: [],
     pistaActiva: null,
@@ -393,7 +395,8 @@ export const usarApp = create<EstadoApp>((set, get) => {
         await guardarAhora();
         const proyecto = await motor.proyecto(id);
         set({
-          proyecto, analisis: null, vista: "editor", clipsSeleccionados: [], pistaActiva: proyecto.pistas[0]?.id ?? null,
+          proyecto, analisis: null, vista: enReproductor ? get().vista : "editor", clipsSeleccionados: [],
+          pistaActiva: proyecto.pistas[0]?.id ?? null,
           rango: null, pasado: [], futuro: [], bucle: false, guardado: "guardado",
         });
         motorAudio.actualizar(proyecto);
@@ -436,6 +439,16 @@ export const usarApp = create<EstadoApp>((set, get) => {
     },
 
     importacion: null,
+
+    async anadirProyectos(archivos) {
+      const { motorLocal } = await import("../reproductor/motorLocal");
+      await motorLocal.anadirArchivos(archivos);
+      await get().refrescarProyectos();
+      if (motorLocal.avisos.length) {
+        set({ aviso: { texto: motorLocal.avisos.join("\n"), tipo: "error" } });
+        motorLocal.avisos = [];
+      }
+    },
 
     async prepararImportacion(origen, opciones) {
       const nombre = (typeof origen === "string" ? origen.split(/[\\/]/).pop() : origen.name) ?? "";
