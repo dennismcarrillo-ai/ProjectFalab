@@ -12,10 +12,11 @@ import type {
   AccionPedal, Analisis, AsignacionPedal, Cifrado, Clip, DetalleAcordes, Disparador, Ecualizador, OrdenPlaylist,
   Pista, Playlist, Portapapeles, Preanalisis, Proyecto, ResumenProyecto, Salud, Seccion, Trabajo,
 } from "../tipos";
+import type { EnCola } from "../reproductor/banda";
 import { desplazar, ordenar } from "../util/biblioteca";
 
 export type Vista = "editor" | "karaoke" | "cancionero" | "partitura";
-export type Dialogo = null | "exportar" | "drive" | "estructura" | "pedal" | "grabacion" | "preanalisis";
+export type Dialogo = null | "exportar" | "drive" | "estructura" | "pedal" | "grabacion" | "preanalisis" | "banda";
 
 const CLAVE_GRABACION = "falab.grabacion";
 function leerOpcionesDeGrabacion(): OpcionesDeGrabacion {
@@ -89,6 +90,13 @@ interface EstadoApp {
   cerrar(): Promise<void>;
   eliminarProyecto(id: string): Promise<void>;
   importar(origen: string | File, opciones: OpcionesImportar): Promise<void>;
+  // Banda (reproductor): sesión con la Mac que analiza y comparte las canciones.
+  banda: { usuario: string | null; url: string; cola: EnCola[]; subida: number | null };
+  entrarEnBanda(url: string, nombre: string, clave: string): Promise<boolean>;
+  salirDeBanda(): Promise<void>;
+  subirABanda(archivo: File, separarCoros: boolean): Promise<void>;
+  /** Guarda una canción de la banda en el dispositivo para usarla sin conexión. */
+  descargarDeBanda(id: string): Promise<void>;
   /** Reproductor (iPad): añade proyectos .falab elegidos a mano y actualiza la biblioteca. */
   anadirProyectos(archivos: File[]): Promise<void>;
   /** Canción escuchada y pendiente de que el usuario confirme qué pistas separar. */
@@ -307,6 +315,25 @@ export const usarApp = create<EstadoApp>((set, get) => {
     }
   };
 
+  /** Copia al estado lo que el motor local sabe de la banda y programa la siguiente consulta. */
+  let relojDeBanda: ReturnType<typeof setTimeout> | undefined;
+  const reflejarBanda = async (): Promise<void> => {
+    const { motorLocal } = await import("../reproductor/motorLocal");
+    const sesion = motorLocal.banda;
+    set({ banda: { ...get().banda, usuario: sesion?.usuario.nombre ?? null, url: sesion?.url ?? "", cola: motorLocal.cola } });
+    if (motorLocal.sesionCaducada) {
+      motorLocal.sesionCaducada = false;
+      set({ aviso: { texto: "La sesión con la banda ha caducado. Vuelve a entrar.", tipo: "info" } });
+    }
+    if (motorLocal.avisos.length) {
+      set({ aviso: { texto: motorLocal.avisos.join("\n"), tipo: "error" } });
+      motorLocal.avisos = [];
+    }
+    clearTimeout(relojDeBanda);
+    // Con canciones en análisis se consulta a menudo; si no, de vez en cuando por si alguien subió algo.
+    if (sesion) relojDeBanda = setTimeout(() => void get().refrescarProyectos().catch(() => undefined), motorLocal.cola.length ? 4000 : 45000);
+  };
+
   /** Guarda las playlists en el motor; si falla, se recupera el estado real. */
   const fijarPlaylists = async (playlists: Playlist[]): Promise<void> => {
     set({ playlists }); // optimista: la lista responde al instante
@@ -375,6 +402,13 @@ export const usarApp = create<EstadoApp>((set, get) => {
             pedal: biblioteca.ajustes.pedal ?? {},
           });
           void escucharMidi();
+          if (enReproductor) {
+            // Si ya había sesión con la Mac de la banda, se recupera y se trae su biblioteca.
+            const banda = await import("../reproductor/banda");
+            const { motorLocal } = await import("../reproductor/motorLocal");
+            motorLocal.banda = banda.sesionGuardada();
+            await get().refrescarProyectos();
+          }
           return;
         } catch (error) {
           if (intento === 39) set({ errorMotor: (error as Error).message || String(error) });
@@ -386,6 +420,68 @@ export const usarApp = create<EstadoApp>((set, get) => {
     async refrescarProyectos() {
       const [proyectos, biblioteca] = await Promise.all([motor.proyectos(), motor.biblioteca()]);
       set({ proyectos, playlists: biblioteca.playlists });
+      if (enReproductor) await reflejarBanda();
+    },
+
+    banda: { usuario: null, url: "", cola: [], subida: null },
+
+    async entrarEnBanda(url, nombre, clave) {
+      const banda = await import("../reproductor/banda");
+      const { motorLocal } = await import("../reproductor/motorLocal");
+      try {
+        motorLocal.banda = await banda.entrar(url, nombre, clave);
+        motorLocal.sesionCaducada = false;
+      } catch (error) {
+        set({ aviso: { texto: (error as Error).message, tipo: "error" } });
+        return false;
+      }
+      await get().refrescarProyectos();
+      return true;
+    },
+
+    async salirDeBanda() {
+      const banda = await import("../reproductor/banda");
+      const { motorLocal } = await import("../reproductor/motorLocal");
+      if (motorLocal.banda) await banda.salir(motorLocal.banda);
+      motorLocal.banda = null;
+      await get().refrescarProyectos();
+    },
+
+    async subirABanda(archivo, separarCoros) {
+      const banda = await import("../reproductor/banda");
+      const { motorLocal } = await import("../reproductor/motorLocal");
+      if (!motorLocal.banda) return;
+      set({ banda: { ...get().banda, subida: 0 } });
+      try {
+        await banda.subir(motorLocal.banda, archivo, separarCoros, (fraccion) => set({ banda: { ...get().banda, subida: fraccion } }));
+        set({ aviso: { texto: `«${archivo.name}» ya está en la Mac de la banda. Aparecerá en la lista cuando termine el análisis.`, tipo: "info" } });
+      } catch (error) {
+        set({ aviso: { texto: `No se pudo subir: ${(error as Error).message}`, tipo: "error" } });
+      }
+      set({ banda: { ...get().banda, subida: null } });
+      await get().refrescarProyectos();
+    },
+
+    async descargarDeBanda(id) {
+      const banda = await import("../reproductor/banda");
+      const { motorLocal } = await import("../reproductor/motorLocal");
+      if (!motorLocal.banda) return;
+      try {
+        if (!("__TAURI_INTERNALS__" in window)) {
+          // En el navegador se descarga como cualquier archivo; luego se abre con «Elegir proyectos…».
+          window.location.assign(await banda.enlaceDeDescarga(motorLocal.banda, id));
+          return;
+        }
+        const titulo = "Guardando en el dispositivo";
+        const avance = (progreso: number) => set({ trabajo: {
+          id: "copia", tipo: "copia", estado: "ejecutando", progreso, etapa: "Descargando de la Mac de la banda", resultado: null, error: null, titulo } });
+        avance(0);
+        await motorLocal.guardarDeBanda(id, avance);
+        set({ trabajo: null });
+        await get().refrescarProyectos();
+      } catch (error) {
+        set({ trabajo: null, aviso: { texto: `No se pudo guardar la canción: ${(error as Error).message}`, tipo: "error" } });
+      }
     },
 
     async abrir(id) {

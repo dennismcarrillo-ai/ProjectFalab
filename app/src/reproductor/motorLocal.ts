@@ -10,6 +10,7 @@
 import type { Analisis, Cifrado, Nota, Playlist, Proyecto, ResumenProyecto } from "../tipos";
 import { DecodificadorFlac } from "./flac";
 import { borrarProyecto, copiarAlAlmacen, listarProyectos, sistemaDeArchivos } from "./almacen";
+import { canciones as cancionesDeBanda, LectorDeBanda, urlDelPaquete, type EnCola, type SesionDeBanda } from "./banda";
 import { LectorDeBlob, type Lector } from "./lector";
 import { ponerNombres, type AnalisisSinNombres } from "./nombres";
 import { Paquete } from "./zip";
@@ -35,8 +36,11 @@ interface Abierto {
 interface Origen {
   archivo: string;
   lector: Lector;
-  /** Dónde está guardado en el dispositivo (null = elegido solo para esta sesión, en un navegador). */
-  base: "datos" | "documentos" | null;
+  /**
+   * Dónde está: guardado en el dispositivo («datos», «documentos»), en la Mac de la banda
+   * («banda», se reproduce en streaming) o elegido solo para esta sesión en un navegador (null).
+   */
+  base: "datos" | "documentos" | "banda" | null;
 }
 
 const enTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -71,6 +75,12 @@ export class MotorLocal {
   private abiertos = new Map<string, Promise<Abierto>>();
   /** Problemas encontrados al leer archivos (se muestran una vez en la biblioteca). */
   avisos: string[] = [];
+  /** Sesión con la Mac de la banda, si la hay. */
+  banda: SesionDeBanda | null = null;
+  /** Canciones que la Mac de la banda está analizando. */
+  cola: EnCola[] = [];
+  /** La sesión de la banda dejó de valer (hay que volver a entrar). */
+  sesionCaducada = false;
 
   // ------------------------------------------------------------------ biblioteca del dispositivo
 
@@ -129,6 +139,59 @@ export class MotorLocal {
     await this.explorarDispositivo();
   }
 
+  /** Trae la biblioteca de la Mac de la banda. Lo ya guardado en el dispositivo tiene preferencia. */
+  async explorarBanda(): Promise<void> {
+    const sesion = this.banda;
+    // Lo que venía de la banda se rehace entero: pudo cambiar o borrarse allí.
+    const tamanos = new Map<string, number>();
+    for (const [id, origen] of this.origenes) {
+      if (origen.base === "banda") {
+        tamanos.set(id, origen.lector.tamano);
+        this.origenes.delete(id);
+        this.resumenes.delete(id);
+      }
+    }
+    if (!sesion) {
+      this.cola = [];
+      return;
+    }
+    try {
+      const { canciones, cola } = await cancionesDeBanda(sesion);
+      this.cola = cola;
+      for (const cancion of canciones) {
+        if (this.origenes.has(cancion.id)) continue;   // copia local: funciona sin conexión
+        this.origenes.set(cancion.id, {
+          archivo: cancion.nombre, base: "banda",
+          lector: new LectorDeBanda(urlDelPaquete(sesion, cancion.id), cancion.peso, sesion.testigo),
+        });
+        this.resumenes.set(cancion.id, { ...cancion, remota: true });
+        // Si la canción cambió en la Mac (otro tamaño), lo que hubiera abierto ya no vale.
+        if (tamanos.get(cancion.id) !== cancion.peso) this.abiertos.delete(cancion.id);
+      }
+    } catch (error) {
+      if ((error as { estado?: number }).estado === 401) {
+        this.banda = null;
+        this.sesionCaducada = true;
+      } else {
+        this.avisos.push((error as Error).message);
+      }
+    }
+  }
+
+  /** App de iPad o Android: guarda en el dispositivo una canción de la banda, para usarla sin conexión. */
+  async guardarDeBanda(id: string, alAvanzar: (fraccion: number) => void): Promise<void> {
+    const origen = this.origenes.get(id);
+    if (!origen || origen.base !== "banda") return;
+    const lector = origen.lector;
+    // Se descarga por trozos con el mismo mecanismo que la copia de un archivo elegido a mano.
+    const comoArchivo = {
+      name: `${origen.archivo}.falab`, size: lector.tamano,
+      slice: (desde: number, hasta: number) => ({ arrayBuffer: async () => (await lector.leer(desde, hasta - desde)).slice().buffer }),
+    };
+    await copiarAlAlmacen(await sistemaDeArchivos(), comoArchivo as unknown as Blob & { name: string }, alAvanzar);
+    await this.explorarDispositivo();
+  }
+
   /** Vuelve a mirar qué proyectos hay guardados en el dispositivo. */
   async explorarDispositivo(): Promise<void> {
     if (!enTauri) return;
@@ -143,7 +206,7 @@ export class MotorLocal {
     }
     // Lo que ya no está en el dispositivo desaparece de la biblioteca.
     for (const [id, origen] of this.origenes) {
-      if (origen.base !== null && !vistos.has(id)) {
+      if (origen.base !== null && origen.base !== "banda" && !vistos.has(id)) {
         this.origenes.delete(id);
         this.resumenes.delete(id);
         this.abiertos.delete(id);
@@ -234,6 +297,7 @@ export class MotorLocal {
     }
     if (es("proyectos") && metodo === "GET") {
       await this.explorarDispositivo();
+      await this.explorarBanda();
       return json([...this.resumenes.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")));
     }
     if (es("biblioteca")) return json(leerAlmacen(CLAVE_BIBLIOTECA, { playlists: [] as Playlist[], ajustes: { driveAutomatico: false } }));
@@ -264,6 +328,7 @@ export class MotorLocal {
       }
       if (partes.length === 2 && metodo === "DELETE") {
         const origen = this.origenes.get(id);
+        if (origen?.base === "banda") throw new Error("Las canciones de la banda se gestionan desde la Mac.");
         if (origen?.base) await borrarProyecto(await sistemaDeArchivos(), { nombre: origen.archivo, base: origen.base });
         this.origenes.delete(id);
         this.resumenes.delete(id);

@@ -117,6 +117,10 @@ export interface ResumenProyecto {
   tonalidad: Tonalidad | null;
   /** Tonalidad del arranque de la canción (la que cuenta al ordenar un popurrí). */
   tonalidadInicial: Tonalidad | null;
+  /** Reproductor: la canción está en la Mac de la banda y se reproduce en streaming. */
+  remota?: boolean;
+  /** Quién de la banda subió la canción (si fue subida por un músico). */
+  subidoPor?: string | null;
 }
 
 export type OrdenPlaylist = "manual" | "alfabetico" | "duracion" | "bpm" | "tonalidad" | "quintas";

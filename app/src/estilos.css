@@ -462,3 +462,18 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
   .dialogo { padding: 14px; }
   .cuenta-gigante { font-size: 120px; }
 }
+
+/* ---------- banda ---------- */
+.panel-banda { width: min(860px, 100%); padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.panel-banda .cabecera-banda { display: flex; align-items: center; gap: 8px; }
+.panel-banda .campos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.panel-banda .campos input[type="text"], .panel-banda .campos input[type="url"], .panel-banda .campos input[type="password"] {
+  flex: 1 1 180px; min-width: 0; padding: 8px 10px; background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px;
+  user-select: text; -webkit-user-select: text; font-size: 14px;
+}
+.panel-banda .casilla { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.cola-banda { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 10px; }
+.en-cola { display: flex; align-items: center; gap: 10px; font-size: 12.5px; flex-wrap: wrap; }
+.en-cola .titulo { font-weight: 600; flex: 1 1 160px; }
+.en-cola .barra-progreso { flex: 0 0 120px; margin: 0; display: block; }
+.en-cola .barra-progreso > span { display: block; height: 100%; background: linear-gradient(90deg, var(--menta-oscuro), var(--menta)); }

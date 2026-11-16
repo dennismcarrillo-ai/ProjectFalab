@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usarApp } from "../estado/almacen";
 import { enEscritorio, enReproductor, type OpcionesImportar } from "../servicios/motor";
+import { PanelDeBanda } from "./Banda";
 import { Biblioteca } from "./Biblioteca";
 import { IconoNube } from "../util/iconos";
 
@@ -23,8 +24,9 @@ function InicioDelReproductor() {
             canciones que analizaste con falab en tu Mac.</p>
         </div>
       </div>
+      <PanelDeBanda />
       <div className="zona-soltar vidrio">
-        <strong>{hay ? "Añadir más canciones" : "Aún no hay canciones en este dispositivo"}</strong>
+        <strong>{hay ? "Añadir canciones desde un archivo" : "Aún no hay canciones en este dispositivo"}</strong>
         <div className="tenue" style={{ maxWidth: 620, margin: "6px auto 0" }}>
           En la Mac, exporta cada proyecto desde la biblioteca de falab («Exportar») y pasa los archivos .falab a este
           dispositivo. Después pulsa «Elegir proyectos…» y selecciónalos
@@ -127,6 +129,7 @@ function InicioDeEscritorio() {
             Probar con una demostración
           </button>
           <button onClick={() => fijar({ dialogo: "drive" })}><IconoNube /> Google Drive</button>
+          <button onClick={() => fijar({ dialogo: "banda" })} title="Compartir tu biblioteca con tu banda y analizar lo que suban">Banda</button>
         </div>
         <input ref={refArchivo} type="file" hidden accept={EXTENSIONES.map((e) => "." + e).join(",")}
           onChange={(e) => {

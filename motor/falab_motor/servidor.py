@@ -12,7 +12,7 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFil
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import (__version__, biblioteca, config, drive, edicion_letras, guias, medios, midi, paquete, pistas,
+from . import (__version__, banda, biblioteca, config, drive, edicion_letras, guias, medios, midi, paquete, pistas,
                proyecto as modelo, reverb)
 from .exportacion import cancionero
 from .exportacion.exportar import exportar
@@ -339,6 +339,47 @@ def video(id_proyecto: str, id_video: str, solo_ruta: bool = False):
     if solo_ruta:  # la app de escritorio lo abre directamente del disco
         return {"ruta": str(ruta), "inicio": inicio}
     return FileResponse(ruta, media_type="video/mp4")
+
+
+# ------------------------------------------------------- servidor de banda (administración)
+# Estas rutas son de la app de escritorio: solo el dueño de la Mac gestiona el servidor y las cuentas.
+
+@app.get("/banda/estado")
+def banda_estado() -> dict:
+    return banda.estado()
+
+
+@app.put("/banda")
+def banda_fijar(cuerpo: dict = Body(...)) -> dict:
+    try:
+        return banda.fijar(cuerpo.get("activo"), cuerpo.get("direccion"))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.post("/banda/usuarios")
+def banda_crear_usuario(cuerpo: dict = Body(...)) -> dict:
+    try:
+        return banda.crear_usuario(str(cuerpo.get("nombre", "")), str(cuerpo.get("clave", "")))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.put("/banda/usuarios/{id_usuario}")
+def banda_cambiar_clave(id_usuario: str, cuerpo: dict = Body(...)) -> dict:
+    try:
+        banda.cambiar_clave(id_usuario, str(cuerpo.get("clave", "")))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except KeyError as error:
+        raise HTTPException(404, "Músico desconocido.") from error
+    return {"cambiada": True}
+
+
+@app.delete("/banda/usuarios/{id_usuario}")
+def banda_eliminar_usuario(id_usuario: str) -> dict:
+    banda.eliminar_usuario(id_usuario)
+    return {"eliminado": True}
 
 
 # ---------------------------------------------------------------- pedal MIDI

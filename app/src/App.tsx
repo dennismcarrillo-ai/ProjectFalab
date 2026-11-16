@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DialogoBanda } from "./componentes/Banda";
 import { Aviso, DialogoDrive, DialogoExportar, Progreso } from "./componentes/Dialogos";
 import { DialogoEstructura, DialogoPedal } from "./componentes/Directo";
 import { DialogoPreanalisis } from "./componentes/Preanalisis";
@@ -206,6 +207,7 @@ export function App() {
       {dialogo === "drive" && <DialogoDrive />}
       {dialogo === "estructura" && proyecto && <DialogoEstructura />}
       {dialogo === "pedal" && <DialogoPedal />}
+      {dialogo === "banda" && <DialogoBanda />}
       {dialogo === "preanalisis" && <DialogoPreanalisis />}
       {dialogo === "grabacion" && <DialogoGrabacion />}
       {proyecto && ventanaVideo && !vistaPrevia && <VentanaVideo />}

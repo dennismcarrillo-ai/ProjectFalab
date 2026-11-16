@@ -122,7 +122,12 @@ function FilaDeProyecto({ p, posicion, compacta }: { p: ResumenProyecto; posicio
     <div className={`proyecto-fila ${abierto ? "activo" : ""}`} onClick={() => void abrir(p.id)} role="button" tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && void abrir(p.id)}>
       <span className="tenue mono" style={{ width: 22 }}>{posicion}</span>
-      <span className="titulo">{p.nombre}{p.tieneVideo && <span className="etiqueta-video">video</span>}</span>
+      <span className="titulo">
+        {p.nombre}
+        {p.tieneVideo && <span className="etiqueta-video">video</span>}
+        {p.remota && <span className="etiqueta-video" title="Está en la Mac de la banda: se reproduce por internet">banda</span>}
+        {p.subidoPor && <span className="tenue" style={{ fontWeight: 400, fontSize: 11.5 }}> · subida por {p.subidoPor}</span>}
+      </span>
       <span className="dato mono" title="Tonalidad">{tonalidad}</span>
       <span className="dato mono" title="Tempo">{p.bpm.toFixed(1)} BPM</span>
       <span className="dato mono" title="Duración">{formatearTiempo(p.duracion, 0)}</span>
@@ -147,9 +152,13 @@ function FilaDeProyecto({ p, posicion, compacta }: { p: ResumenProyecto; posicio
         {!enReproductor && (
           <button className="plano" title="Guardar el proyecto completo en un archivo .falab" onClick={() => void exportar()}>Exportar</button>
         )}
-        <button className="plano" title="Eliminar el proyecto de este equipo" onClick={() => {
+        {p.remota && (
+          <button className="plano" title="Guardar la canción en este dispositivo para usarla sin conexión"
+            onClick={() => void usarApp.getState().descargarDeBanda(p.id)}>Descargar</button>
+        )}
+        {!p.remota && <button className="plano" title="Eliminar el proyecto de este equipo" onClick={() => {
           if (window.confirm(`¿Eliminar «${p.nombre}» de este ${enReproductor ? "dispositivo" : "equipo"}? No se puede deshacer.`)) void eliminarProyecto(p.id);
-        }}>Eliminar</button>
+        }}>Eliminar</button>}
       </span>
     </div>
   );

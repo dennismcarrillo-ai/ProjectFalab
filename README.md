@@ -96,6 +96,11 @@ cd motor && .venv/bin/python -m falab_motor --puerto 8765
 cd app && npm run dev
 ```
 
+## Banda
+
+Tu Mac puede compartir su biblioteca con tu banda y analizar las canciones que suban los demás,
+que entran desde el navegador con usuario y contraseña. Ver [docs/BANDA.md](docs/BANDA.md).
+
 ## iPad y Android
 
 Hay versiones para iPad y para Android (tableta o teléfono) que funcionan como reproductor de los
@@ -116,13 +121,14 @@ cd app && npm test
 
 | Parte | Estado |
 |---|---|
-| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (38 pruebas automáticas) |
+| Motor: anti-bleed, mapa de pulsos, acordes, exportaciones, biblioteca, API | Probado (42 pruebas automáticas) |
 | Edición, EQ, reproductor y orden de playlists | Probado (56 pruebas automáticas) |
 | Interfaz completa contra el motor | Probada en Chromium con el proyecto de demostración |
 | Inferencia real de Demucs, BasicPitch y Whisper, y carcasa Tauri | Funcionando en una MacBook Pro M1 con canciones reales |
 | Pedal MIDI y voz de las guías | La lógica está probada con mensajes y voz simulados; **pendiente de confirmar** con un pedal real y con la voz de macOS |
 | Grabación de micrófono y cámara, y video flotante | Probado en Chromium con dispositivos simulados; **pendiente de confirmar** en la app de macOS (permisos del sistema y acceso al video) |
 | Pre-análisis y división de coros y guitarras | Probado con un separador simulado; **pendiente de confirmar** con Demucs y música real. El separador neuronal de coros (`--con-coros`) no se ha ejecutado nunca |
+| Servidor de banda (cuentas, streaming, subida y análisis en cola) | Probado en un navegador contra el servidor real en la misma máquina; **pendiente de probar a través del túnel y desde otra red** |
 | Reproductor para iPad y Android | Probado en un navegador con proyectos reales y sin motor, a tamaño de tableta y de teléfono; **pendiente de compilar para iOS y Android y de probar en dispositivos** |
 | Google Drive (subida, descarga y guardado automático) | La cola automática está probada con un Drive simulado; **pendiente de confirmar** contra Drive real |
 

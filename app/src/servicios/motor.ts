@@ -18,6 +18,18 @@ export interface EventoMidi {
   dato2: number;
 }
 
+export interface EstadoDeBanda {
+  /** El dueño quiere que el servidor esté encendido. */
+  activo: boolean;
+  funcionando: boolean;
+  puerto: number;
+  /** Dirección pública (la del túnel HTTPS) que se comparte con los músicos. */
+  direccion: string;
+  usuarios: { id: string; nombre: string }[];
+  /** La interfaz web está compilada y se puede servir. */
+  interfazLista: boolean;
+}
+
 export interface EstadoDrive {
   configurado: boolean;
   conectado: boolean;
@@ -37,6 +49,8 @@ const enTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 function detectarReproductor(): boolean {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   if (new URLSearchParams(window.location.search).has("reproductor")) return true;
+  // Página servida por la Mac de la banda: es el reproductor también en un ordenador de sobremesa.
+  if ((window as { __FALAB_BANDA__?: boolean }).__FALAB_BANDA__) return true;
   if (/iPad|iPhone|iPod|Android/i.test(navigator.userAgent)) return true;
   // El iPad se presenta como un Mac: se distingue porque tiene pantalla táctil.
   return enTauri && /Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
@@ -203,6 +217,14 @@ export const motor = {
     `${URL_NAVEGADOR}/proyectos/${id}/exportaciones/${encodeURIComponent(ruta.split(/[\\/]/).pop() ?? "")}`,
   trabajo: (id: string) => json<Trabajo>("GET", `/trabajos/${id}`),
   cancelar: (id: string) => json("POST", `/trabajos/${id}/cancelar`),
+  /** Administración del servidor de banda (solo en la app de escritorio). */
+  banda: {
+    estado: () => json<EstadoDeBanda>("GET", "/banda/estado"),
+    fijar: (cambios: { activo?: boolean; direccion?: string }) => json<EstadoDeBanda>("PUT", "/banda", cambios),
+    crearUsuario: (nombre: string, clave: string) => json<{ id: string; nombre: string }>("POST", "/banda/usuarios", { nombre, clave }),
+    cambiarClave: (id: string, clave: string) => json("PUT", `/banda/usuarios/${id}`, { clave }),
+    eliminarUsuario: (id: string) => json("DELETE", `/banda/usuarios/${id}`),
+  },
   drive: {
     estado: () => json<EstadoDrive>("GET", "/drive/estado"),
     conectar: () => json<{ configurado: boolean; conectado: boolean }>("POST", "/drive/conectar"),

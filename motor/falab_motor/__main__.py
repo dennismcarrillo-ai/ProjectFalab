@@ -21,6 +21,9 @@ def main() -> None:
     argumentos = analizador.parse_args()
     config.asegurar_carpetas()
     drive.arrancar_sincronizador()
+    from . import banda, servidor
+
+    banda.arrancar_si_procede(servidor.trabajos)  # si el dueño lo dejó activado
     puerto = argumentos.puerto or _puerto_libre()
     # La aplicación de escritorio lee esta línea para saber dónde escucha el motor.
     print(f"FALAB_MOTOR_LISTO puerto={puerto}", flush=True)
