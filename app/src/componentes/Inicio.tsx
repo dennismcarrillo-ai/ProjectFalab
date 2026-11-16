@@ -12,6 +12,7 @@ function InicioDelReproductor() {
   const hay = usarApp((s) => s.proyectos.length > 0);
   const ref = useRef<HTMLInputElement>(null);
   const enApp = "__TAURI_INTERNALS__" in window;
+  const esApple = !/Android/i.test(navigator.userAgent);
   return (
     <div className="inicio">
       <div className="portada vidrio">
@@ -25,16 +26,19 @@ function InicioDelReproductor() {
       <div className="zona-soltar vidrio">
         <strong>{hay ? "Añadir más canciones" : "Aún no hay canciones en este dispositivo"}</strong>
         <div className="tenue" style={{ maxWidth: 620, margin: "6px auto 0" }}>
-          {enApp
-            ? "En la Mac, exporta cada proyecto desde la biblioteca de falab («Exportar»). Pasa los archivos .falab al iPad (AirDrop, iCloud o cable) y guárdalos en la app Archivos, dentro de «En mi iPad → falab»."
-            : "Elige proyectos exportados desde falab (.falab). En el navegador se abren solo durante esta sesión."}
+          En la Mac, exporta cada proyecto desde la biblioteca de falab («Exportar») y pasa los archivos .falab a este
+          dispositivo. Después pulsa «Elegir proyectos…» y selecciónalos
+          {enApp ? ": falab los guarda y quedan disponibles sin conexión." : ". En el navegador se abren solo durante esta sesión."}
         </div>
         <div className="acciones">
-          {enApp
-            ? <button className="primario" onClick={() => void refrescarProyectos()}>Actualizar la lista</button>
-            : <button className="primario" onClick={() => ref.current?.click()}>Elegir proyectos…</button>}
+          <button className="primario" onClick={() => ref.current?.click()}>Elegir proyectos…</button>
+          {esApple && enApp && (
+            <button onClick={() => void refrescarProyectos()}
+              title="Si dejaste los .falab en la app Archivos, dentro de «En mi iPad → falab»">Actualizar la lista</button>
+          )}
         </div>
-        <input ref={ref} type="file" hidden multiple accept=".falab" aria-label="Proyectos de falab"
+        {/* Sin filtro de tipo: Android no conoce la extensión .falab y los mostraría desactivados. */}
+        <input ref={ref} type="file" hidden multiple aria-label="Proyectos de falab"
           onChange={(e) => {
             const archivos = [...(e.target.files ?? [])];
             if (archivos.length) void anadirProyectos(archivos);

@@ -9,7 +9,8 @@
  */
 import type { Analisis, Cifrado, Nota, Playlist, Proyecto, ResumenProyecto } from "../tipos";
 import { DecodificadorFlac } from "./flac";
-import { LectorDeBlob, LectorDeDocumento, type Lector } from "./lector";
+import { borrarProyecto, copiarAlAlmacen, listarProyectos, sistemaDeArchivos } from "./almacen";
+import { LectorDeBlob, type Lector } from "./lector";
 import { ponerNombres, type AnalisisSinNombres } from "./nombres";
 import { Paquete } from "./zip";
 
@@ -34,8 +35,8 @@ interface Abierto {
 interface Origen {
   archivo: string;
   lector: Lector;
-  /** Para borrar el archivo en el iPad. */
-  enDocumentos: boolean;
+  /** Dónde está guardado en el dispositivo (null = elegido solo para esta sesión, en un navegador). */
+  base: "datos" | "documentos" | null;
 }
 
 const enTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -74,7 +75,7 @@ export class MotorLocal {
   // ------------------------------------------------------------------ biblioteca del dispositivo
 
   /** Registra un .falab: lee su ficha (o la recupera de la caché) y lo deja listo para abrir. */
-  private async registrar(archivo: string, lector: Lector, enDocumentos: boolean): Promise<void> {
+  private async registrar(archivo: string, lector: Lector, base: Origen["base"]): Promise<string> {
     const cache = leerAlmacen<Record<string, ResumenProyecto>>(CLAVE_RESUMENES, {});
     const clave = `${archivo}:${lector.tamano}`;
     let resumen = cache[clave];
@@ -94,40 +95,55 @@ export class MotorLocal {
       cache[clave] = resumen;
       escribirAlmacen(CLAVE_RESUMENES, cache);
     }
-    this.origenes.set(resumen.id, { archivo, lector, enDocumentos });
+    this.origenes.set(resumen.id, { archivo, lector, base });
     this.resumenes.set(resumen.id, resumen);
+    this.abiertos.delete(resumen.id); // por si es una versión nueva del mismo proyecto
+    return resumen.id;
   }
 
-  /** Archivos elegidos a mano (en un navegador valen solo para la sesión). */
-  async anadirArchivos(archivos: File[]): Promise<void> {
-    for (const archivo of archivos) {
+  /**
+   * Añade proyectos elegidos por el usuario. En la app (Android, iPad) se copian al almacén del
+   * dispositivo y quedan guardados; en un navegador valen solo para la sesión.
+   */
+  async anadirArchivos(archivos: File[], alAvanzar: (fraccion: number, nombre: string) => void = () => {}): Promise<void> {
+    for (const [i, archivo] of archivos.entries()) {
       try {
-        await this.registrar(archivo.name, new LectorDeBlob(archivo), false);
+        if (!archivo.name.toLowerCase().endsWith(".falab")) {
+          throw new Error(`«${archivo.name}» no es un proyecto de falab (.falab).`);
+        }
+        if (!enTauri) {
+          await this.registrar(archivo.name, new LectorDeBlob(archivo), null);
+          continue;
+        }
+        // Antes de copiar cientos de MB se comprueba que el archivo sirve.
+        const paquete = await Paquete.abrir(new LectorDeBlob(archivo));
+        if (!paquete.tiene("reproductor.json")) {
+          throw new Error(`«${archivo.name}» se exportó con una versión antigua de falab. Vuelve a exportarlo desde la Mac.`);
+        }
+        const fs = await sistemaDeArchivos();
+        await copiarAlAlmacen(fs, archivo, (fraccion) => alAvanzar((i + fraccion) / archivos.length, archivo.name));
       } catch (error) {
-        this.avisos.push((error as Error).message);
+        this.avisos.push((error as Error).message || `No se pudo añadir «${archivo.name}».`);
       }
     }
+    await this.explorarDispositivo();
   }
 
-  /** En el iPad: vuelve a mirar la carpeta Documentos de la app (visible en «Archivos»). */
-  async explorarDocumentos(): Promise<void> {
+  /** Vuelve a mirar qué proyectos hay guardados en el dispositivo. */
+  async explorarDispositivo(): Promise<void> {
     if (!enTauri) return;
-    const fs = await import("@tauri-apps/plugin-fs");
-    const entradas = await fs.readDir("", { baseDir: fs.BaseDirectory.Document });
+    const fs = await sistemaDeArchivos();
     const vistos = new Set<string>();
-    for (const entrada of entradas) {
-      if (!entrada.isFile || !entrada.name.toLowerCase().endsWith(".falab")) continue;
+    for (const archivo of await listarProyectos(fs)) {
       try {
-        const { size } = await fs.stat(entrada.name, { baseDir: fs.BaseDirectory.Document });
-        await this.registrar(entrada.name, new LectorDeDocumento(entrada.name, size), true);
-        vistos.add(entrada.name);
+        vistos.add(await this.registrar(archivo.nombre, archivo.lector, archivo.base));
       } catch (error) {
         this.avisos.push((error as Error).message);
       }
     }
-    // Lo que se borró desde «Archivos» desaparece de la biblioteca.
+    // Lo que ya no está en el dispositivo desaparece de la biblioteca.
     for (const [id, origen] of this.origenes) {
-      if (origen.enDocumentos && !vistos.has(origen.archivo)) {
+      if (origen.base !== null && !vistos.has(id)) {
         this.origenes.delete(id);
         this.resumenes.delete(id);
         this.abiertos.delete(id);
@@ -217,7 +233,7 @@ export class MotorLocal {
         componentes: { ffmpeg: false, rubberband: false, demucs: false, basicPitch: false, whisper: false } });
     }
     if (es("proyectos") && metodo === "GET") {
-      await this.explorarDocumentos();
+      await this.explorarDispositivo();
       return json([...this.resumenes.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")));
     }
     if (es("biblioteca")) return json(leerAlmacen(CLAVE_BIBLIOTECA, { playlists: [] as Playlist[], ajustes: { driveAutomatico: false } }));
@@ -248,10 +264,7 @@ export class MotorLocal {
       }
       if (partes.length === 2 && metodo === "DELETE") {
         const origen = this.origenes.get(id);
-        if (origen?.enDocumentos) {
-          const fs = await import("@tauri-apps/plugin-fs");
-          await fs.remove(origen.archivo, { baseDir: fs.BaseDirectory.Document });
-        }
+        if (origen?.base) await borrarProyecto(await sistemaDeArchivos(), { nombre: origen.archivo, base: origen.base });
         this.origenes.delete(id);
         this.resumenes.delete(id);
         this.abiertos.delete(id);

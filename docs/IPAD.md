@@ -29,8 +29,10 @@ El script instala lo necesario y, al final, te indica los pasos en Xcode (elegir
 1. En la Mac, en la biblioteca de falab, pulsa **Exportar** en cada proyecto. Se crea un archivo
    `.falab` con todo: el audio de cada pista, los acordes, la letra, las partituras.
 2. Envía los `.falab` al iPad (AirDrop, iCloud Drive o cable).
-3. En el iPad, con la app **Archivos**, guárdalos en **En mi iPad → falab**.
-4. Abre falab y pulsa **Actualizar la lista**.
+3. En falab, pulsa **Elegir proyectos…** y selecciónalos: falab los copia a su espacio propio.
+
+También puedes guardarlos con la app **Archivos** en **En mi iPad → falab** y pulsar
+**Actualizar la lista**; así no se copian y no ocupan el doble mientras conservas el original.
 
 Los proyectos exportados con versiones anteriores de falab no traen los datos que el iPad
 necesita: vuelve a exportarlos.

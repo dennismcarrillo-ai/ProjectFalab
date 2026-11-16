@@ -14,6 +14,8 @@
     "fs:allow-document-read-recursive",
     "fs:allow-document-write-recursive",
     "fs:allow-seek",
-    "fs:allow-remove"
+    "fs:allow-remove",
+    "fs:allow-appdata-write-recursive",
+    "fs:allow-appdata-read-recursive"
   ]
 }

@@ -55,6 +55,7 @@ export function Transporte() {
   const esperando = usarReproduccion((s) => s.esperando);
   const { ajustarProyecto, alternarReproduccion, detener, alternarBucle, fijar, alternarShow } = usarApp.getState();
   const show = usarApp((s) => s.showContinuo);
+  const [desplegado, fijarDesplegado] = useState(false);
   const grabacion = usarApp((s) => s.grabacion);
   const textoDeGrabacion = { preparando: "Preparando…", esperando: "Cuenta…", grabando: "● Grabando", guardando: "Guardando…" };
   const bucle = usarApp((s) => s.bucle);
@@ -92,6 +93,10 @@ export function Transporte() {
       <Reloj />
       {grabacion && <span className="estado-grabacion">{textoDeGrabacion[grabacion.estado]}</span>}
       {esperando && <span className="tenue">Cargando audio…</span>}
+      {/* En el teléfono, los ajustes se pliegan para dejar la pantalla a la letra y los acordes. */}
+      <button className={`conmutador-ajustes ${desplegado ? "activo" : ""}`} aria-expanded={desplegado}
+        onClick={() => fijarDesplegado(!desplegado)}>Ajustes</button>
+      <div className={`secundarios ${desplegado ? "" : "plegados"}`}>
       <div className="separador" />
 
       <div className="grupo" title="Cambia la velocidad sin alterar el tono">
@@ -187,6 +192,7 @@ export function Transporte() {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

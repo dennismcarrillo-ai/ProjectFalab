@@ -435,14 +435,22 @@ export const usarApp = create<EstadoApp>((set, get) => {
 
     cancelarTrabajo() {
       const trabajo = get().trabajo;
-      if (trabajo) void motor.cancelar(trabajo.id);
+      // La copia de archivos en el dispositivo no es un trabajo del motor: no se puede cancelar.
+      if (trabajo && trabajo.tipo !== "copia") void motor.cancelar(trabajo.id);
     },
 
     importacion: null,
 
     async anadirProyectos(archivos) {
       const { motorLocal } = await import("../reproductor/motorLocal");
-      await motorLocal.anadirArchivos(archivos);
+      // En el dispositivo los proyectos se copian al almacén de la app: se muestra el avance.
+      const copia = (progreso: number, etapa: string) => set({ trabajo: {
+        id: "copia", tipo: "copia", estado: "ejecutando", progreso, etapa, resultado: null, error: null, titulo: "Añadiendo canciones",
+      } });
+      const enApp = "__TAURI_INTERNALS__" in window;
+      if (enApp) copia(0, "Preparando…");
+      await motorLocal.anadirArchivos(archivos, copia);
+      set({ trabajo: null });
       await get().refrescarProyectos();
       if (motorLocal.avisos.length) {
         set({ aviso: { texto: motorLocal.avisos.join("\n"), tipo: "error" } });

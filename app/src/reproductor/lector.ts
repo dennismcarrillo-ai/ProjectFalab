@@ -41,18 +41,20 @@ export class LectorDeTramo implements Lector {
 }
 
 /**
- * Archivo de la carpeta Documentos de la app (iPad). Se abre una vez y se lee por tramos con el
- * complemento de archivos de Tauri; las lecturas van en fila porque comparten un único cursor.
+ * Archivo guardado en el dispositivo: en el almacén privado de la app («datos») o en su carpeta
+ * de Documentos («documentos», la que se ve en «Archivos» del iPad). Se abre una vez y se lee por
+ * tramos con el complemento de archivos de Tauri; las lecturas van en fila porque comparten cursor.
  */
-export class LectorDeDocumento implements Lector {
+export class LectorDeArchivoDeApp implements Lector {
   private fila: Promise<unknown> = Promise.resolve();
   private manejador: { seek(desde: number, modo: number): Promise<number>; read(destino: Uint8Array): Promise<number | null> } | null = null;
-  constructor(private nombre: string, readonly tamano: number) {}
+  constructor(private ruta: string, readonly tamano: number, private base: "datos" | "documentos") {}
 
   leer(desde: number, cuantos: number): Promise<Uint8Array> {
     const tarea = this.fila.then(async () => {
       const fs = await import("@tauri-apps/plugin-fs");
-      this.manejador ??= await fs.open(this.nombre, { read: true, baseDir: fs.BaseDirectory.Document });
+      const baseDir = this.base === "datos" ? fs.BaseDirectory.AppData : fs.BaseDirectory.Document;
+      this.manejador ??= await fs.open(this.ruta, { read: true, baseDir });
       await this.manejador.seek(desde, fs.SeekMode.Start);
       const destino = new Uint8Array(Math.max(0, Math.min(cuantos, this.tamano - desde)));
       let leidos = 0;
