@@ -6,6 +6,14 @@ import type { Acorde, Nota, Pulso } from "../tipos";
 
 const ACORDES_POR_ADELANTADO = 4;
 
+/** Barra de nota con los extremos redondeados (los navegadores antiguos no tienen `roundRect`). */
+function barra(c: CanvasRenderingContext2D, x: number, y: number, ancho: number, alto: number): void {
+  c.beginPath();
+  if (typeof c.roundRect === "function") c.roundRect(x, y, ancho, alto, alto / 2);
+  else c.rect(x, y, ancho, alto);
+  c.fill();
+}
+
 /** Pulsos que faltan desde `desde` hasta `hasta`, según el mapa de pulsos de la canción. */
 function pulsosHasta(pulsos: Pulso[], desde: number, hasta: number): number {
   let cuenta = 0;
@@ -100,12 +108,12 @@ function CarrilDeNotas({ idProyecto }: { idProyecto: string }) {
         if (nota.inicio > hasta) break;
         const x0 = x(nota.inicio), x1 = Math.max(x0 + 3, x(nota.fin));
         c.fillStyle = "rgba(255,255,255,.26)";
-        c.beginPath(); c.roundRect(x0, y(nota.tono), x1 - x0, grosor, grosor / 2); c.fill();
+        barra(c, x0, y(nota.tono), x1 - x0, grosor);
         if (x0 < ahora) {  // parte ya cantada (o cantándose): barrido de color
           c.save();
           c.beginPath(); c.rect(x0, 0, Math.min(x1, ahora) - x0, alto); c.clip();
           c.fillStyle = nota.fin > posicion ? "#5eead4" : "rgba(94,234,212,.45)";
-          c.beginPath(); c.roundRect(x0, y(nota.tono), x1 - x0, grosor, grosor / 2); c.fill();
+          barra(c, x0, y(nota.tono), x1 - x0, grosor);
           c.restore();
         }
       }

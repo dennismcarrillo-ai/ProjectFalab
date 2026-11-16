@@ -181,6 +181,10 @@ let temporizadorGuardado: ReturnType<typeof setTimeout> | undefined;
 const montajeDe = (p: Proyecto): Montaje => Object.fromEntries(p.pistas.map((pista) => [pista.id, pista.clips]));
 
 export const usarApp = create<EstadoApp>((set, get) => {
+  /** Si el audio no arranca (navegador sin soporte, permiso denegado…), que se vea por qué. */
+  const avisarDeAudio = (error: unknown): void => {
+    set({ aviso: { texto: `No se pudo reproducir: ${(error as Error)?.message ?? error}`, tipo: "error" } });
+  };
   /** Aplica un cambio al proyecto, lo envía al motor de audio y programa el autoguardado. */
   const aplicar = (transformar: (p: Proyecto) => Proyecto): void => {
     const actual = get().proyecto;
@@ -836,7 +840,7 @@ export const usarApp = create<EstadoApp>((set, get) => {
       // En directo, cambiar de canción mientras suena no detiene el show.
       const sonaba = usarReproduccion.getState().estado !== "detenido";
       await get().abrir(destino.id);
-      if (sonaba && get().proyecto?.id === destino.id) void motorAudio.reproducir();
+      if (sonaba && get().proyecto?.id === destino.id) void motorAudio.reproducir().catch(avisarDeAudio);
     },
 
     async exportarPaquete(id, destino) {
@@ -1029,7 +1033,7 @@ export const usarApp = create<EstadoApp>((set, get) => {
     alternarReproduccion() {
       if (!get().proyecto) return;
       if (get().grabacion) return void terminarGrabacion(); // pausar durante una toma la da por terminada
-      if (usarReproduccion.getState().estado === "detenido") void motorAudio.reproducir();
+      if (usarReproduccion.getState().estado === "detenido") void motorAudio.reproducir().catch(avisarDeAudio);
       else motorAudio.pausar();
     },
 

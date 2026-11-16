@@ -106,15 +106,29 @@ export class MotorAudio {
   /** Crea el contexto de audio. Debe llamarse tras un gesto del usuario (política de los navegadores). */
   async iniciar(): Promise<void> {
     if (this.contexto) {
-      if (this.contexto.state === "suspended") await this.contexto.resume();
+      // En el iPhone el audio también queda «interrumpido» tras una llamada o al volver a la página.
+      if (this.contexto.state !== "running") await this.contexto.resume();
       return;
+    }
+    if (typeof AudioWorkletNode === "undefined") {
+      throw new Error(window.isSecureContext
+        ? "Este navegador no puede reproducir el audio de falab. Actualiza el sistema o usa Safari o Chrome."
+        : "El audio solo funciona con una dirección segura (https://). Abre falab con la dirección https de la banda.");
     }
     // Misma frecuencia que los stems: el procesador no necesita remuestrear nada.
     // En iPhone y iPad, sin esto el audio respeta el interruptor de silencio y se corta al bloquear.
     const sesion = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
     if (sesion) sesion.type = "playback";
     const contexto = new AudioContext({ sampleRate: FRECUENCIA, latencyHint: "interactive" });
-    await contexto.audioWorklet.addModule("/worklets/falab-procesador.js");
+    // Los navegadores móviles solo dejan sonar si el audio se desbloquea dentro del propio toque:
+    // hay que pedirlo ya, antes de cualquier espera.
+    void contexto.resume().catch(() => undefined);
+    try {
+      await contexto.audioWorklet.addModule("/worklets/falab-procesador.js");
+    } catch (error) {
+      void contexto.close();
+      throw new Error(`No se pudo preparar el motor de audio: ${(error as Error).message}`);
+    }
     const nodo = new AudioWorkletNode(contexto, "falab-procesador", {
       numberOfInputs: 0,
       numberOfOutputs: MAX_PISTAS + 1,
