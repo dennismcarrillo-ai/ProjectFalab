@@ -489,3 +489,12 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .barra-sala.discreta button { padding: 3px 10px; font-size: 12px; }
 @keyframes latido-sala { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .barra-sala .punto-vivo { animation: none; } }
+
+/* ---------- diagnóstico del reproductor ---------- */
+.diagnostico { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; max-width: 900px; margin: 0 auto; }
+.diagnostico .informe { width: 100%; padding: 12px 14px; }
+.diagnostico pre { margin: 0 0 8px; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--mono); user-select: text; -webkit-user-select: text; }
+@media (max-width: 760px) {
+  .portada img { width: 56px; height: 56px; }
+  .portada p { display: none; }
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { usarApp } from "../estado/almacen";
 import { enEscritorio, enReproductor, type OpcionesImportar } from "../servicios/motor";
 import { PanelDeBanda } from "./Banda";
+import { Diagnostico } from "./Diagnostico";
 import { Biblioteca } from "./Biblioteca";
 import { IconoNube } from "../util/iconos";
 
@@ -25,6 +26,8 @@ function InicioDelReproductor() {
         </div>
       </div>
       <PanelDeBanda />
+      {/* Con canciones, la lista va antes que las instrucciones: en un teléfono es lo primero que se busca. */}
+      {hay && <Biblioteca />}
       <div className="zona-soltar vidrio">
         <strong>{hay ? "Añadir canciones desde un archivo" : "Aún no hay canciones en este dispositivo"}</strong>
         <div className="tenue" style={{ maxWidth: 620, margin: "6px auto 0" }}>
@@ -47,7 +50,8 @@ function InicioDelReproductor() {
             e.target.value = "";
           }} />
       </div>
-      <Biblioteca />
+      {!hay && <Biblioteca />}
+      <Diagnostico />
     </div>
   );
 }

@@ -78,6 +78,22 @@ export interface EstadoReproduccion {
   esperando: boolean;
 }
 
+/**
+ * iPhone y iPad antiguos (sin `audioSession`): con el interruptor lateral en silencio, el audio web
+ * no suena. Un elemento de audio en bucle, aunque esté mudo, hace que el sistema lo trate como
+ * música y deje sonar. Debe arrancar dentro de un toque.
+ */
+let silencioDesbloqueado = false;
+function desbloquearSilencio(): void {
+  if (silencioDesbloqueado) return;
+  silencioDesbloqueado = true;
+  // WAV mínimo: un instante de silencio.
+  const audio = new Audio("data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQIAAAAAAA==");
+  audio.loop = true;
+  audio.setAttribute("playsinline", "");
+  void audio.play().catch(() => { silencioDesbloqueado = false; });
+}
+
 export class MotorAudio {
   private contexto: AudioContext | null = null;
   private nodo: AudioWorkletNode | null = null;
@@ -122,6 +138,7 @@ export class MotorAudio {
     // En iPhone y iPad, sin esto el audio respeta el interruptor de silencio y se corta al bloquear.
     const sesion = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
     if (sesion) sesion.type = "playback";
+    else if (/iPad|iPhone|iPod/.test(navigator.userAgent)) desbloquearSilencio();
     const contexto = new AudioContext({ sampleRate: FRECUENCIA, latencyHint: "interactive" });
     // Los navegadores móviles solo dejan sonar si el audio se desbloquea dentro del propio toque:
     // hay que pedirlo ya, antes de cualquier espera.
