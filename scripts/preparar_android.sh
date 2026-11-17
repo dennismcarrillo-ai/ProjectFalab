@@ -49,6 +49,8 @@ echo "==> 3/4 Proyecto de Android"
 if [[ ! -d src-tauri/gen/android ]]; then
   npm run tauri android init
 fi
+# El icono de falab (el proyecto recién creado trae el genérico de Tauri).
+cp -R src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
 echo "==> 4/4 Compilando el APK (la primera vez tarda bastante)"
 # Versión de depuración: va firmada con una clave de pruebas y se puede instalar directamente.

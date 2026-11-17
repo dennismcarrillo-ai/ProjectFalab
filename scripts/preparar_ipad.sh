@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepara la versión de falab para iPad (reproductor). Se ejecuta en la Mac, una sola vez.
+# Prepara la versión de falab para iPad y iPhone (reproductor): es la misma app para los dos. Se ejecuta en la Mac, una sola vez.
 # Requisitos: Xcode instalado y haber ejecutado antes scripts/instalar_mac.sh.
 set -euo pipefail
 
@@ -27,22 +27,25 @@ echo "==> 3/4 Proyecto de Xcode"
 if [[ ! -d src-tauri/gen/apple ]]; then
   npm run tauri ios init
 fi
+# El icono de falab (el proyecto recién creado trae el genérico de Tauri).
+ICONOS="$(find src-tauri/gen/apple -type d -name AppIcon.appiconset | head -1)"
+[[ -n "$ICONOS" ]] && cp src-tauri/icons/ios/*.png "$ICONOS/"
 
 echo "==> 4/4 Listo"
 cat <<'FIN'
 
-Proyecto de iPad preparado. Para instalar falab en tu iPad:
+Proyecto preparado. Para instalar falab en tu iPad o iPhone:
 
-  1. Conecta el iPad a la Mac con el cable y desbloquéalo.
-  2. En el iPad: Ajustes → Privacidad y seguridad → Modo de desarrollador → activar (pide reiniciar).
+  1. Conecta el iPad o el iPhone a la Mac con el cable y desbloquéalo.
+  2. En el dispositivo: Ajustes → Privacidad y seguridad → Modo de desarrollador → activar (pide reiniciar).
   3. Abre el proyecto en Xcode:
 
        cd app && npm run tauri ios build -- --open
 
      (si ese comando no abre Xcode:  open src-tauri/gen/apple/*.xcodeproj)
   4. En Xcode: elige el destino «falab_iOS» → pestaña «Signing & Capabilities» → en «Team»,
-     tu cuenta de Apple. Arriba, elige tu iPad como dispositivo y pulsa ▶.
-  5. La primera vez, en el iPad: Ajustes → General → VPN y gestión de dispositivos → confiar
+     tu cuenta de Apple. Arriba, elige tu iPad o iPhone como dispositivo y pulsa ▶.
+  5. La primera vez, en el dispositivo: Ajustes → General → VPN y gestión de dispositivos → confiar
      en tu cuenta de desarrollador.
 
 Guía completa: docs/IPAD.md

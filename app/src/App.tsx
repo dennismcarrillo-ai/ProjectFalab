@@ -192,16 +192,16 @@ export function App() {
                 Video
               </button>
             )}
-            <button className={panelTablatura ? "activo" : ""} aria-pressed={panelTablatura} disabled={vista === "partitura"}
+            <button className={`accion-cabecera ${panelTablatura ? "activo" : ""}`} aria-pressed={panelTablatura} disabled={vista === "partitura"}
               onClick={() => fijar({ panelTablatura: !panelTablatura })} title="Tablatura sincronizada en un panel lateral (T)">Tablatura</button>
-            <button onClick={() => fijar({ dialogo: "pedal" })} title="Asignar un pedal MIDI o de teclado">Pedal</button>
+            <button className="accion-cabecera pedal" onClick={() => fijar({ dialogo: "pedal" })} title="Asignar un pedal MIDI o de teclado">Pedal</button>
             {!enReproductor && (
               <>
                 <button onClick={() => fijar({ dialogo: "drive" })} title="Sincronizar con Google Drive"><IconoNube /> Drive</button>
                 <button className="primario" onClick={() => fijar({ dialogo: "exportar" })}><IconoExportar /> Exportar</button>
               </>
             )}
-            <button className="plano" onClick={() => void cerrar()}>{enReproductor ? "Canciones" : "Cerrar proyecto"}</button>
+            <button className="plano accion-cabecera salir" onClick={() => void cerrar()}>{enReproductor ? "Canciones" : "Cerrar proyecto"}</button>
           </>
         )}
       </header>

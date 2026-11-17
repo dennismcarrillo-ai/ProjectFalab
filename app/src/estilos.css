@@ -414,7 +414,7 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .conmutador-ajustes { display: none; }
 
 /* ---------- pantallas estrechas (teléfonos) ---------- */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) {
   .barra-superior { flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
   .barra-superior .marca { font-size: 0; gap: 0; }            /* solo el icono */
   .barra-superior .crecer { flex-basis: 100%; height: 0; }     /* los botones pasan a la fila siguiente */
@@ -497,4 +497,48 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 @media (max-width: 760px) {
   .portada img { width: 56px; height: 56px; }
   .portada p { display: none; }
+}
+
+/* ---------- teléfono: cabecera compacta para dejar la pantalla a la canción ---------- */
+.dirigir-en-ajustes { display: none; }
+.app.tactil { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+/* Con menos de 16 px, el iPhone amplía la página al tocar un campo de texto. */
+.app.tactil input[type="text"], .app.tactil input[type="password"], .app.tactil input[type="url"],
+.app.tactil input[type="search"], .app.tactil textarea, .app.tactil select { font-size: 16px; }
+html { -webkit-text-size-adjust: 100%; }
+@media (max-width: 760px), (max-height: 500px) {
+  .barra-sala.discreta.con-proyecto { display: none; }
+  .dirigir-en-ajustes { display: inline-flex; }
+  .barra-superior { gap: 4px; padding: 4px 6px; }
+  .barra-superior .marca { display: none; }
+  .barra-superior .crecer { display: none; }
+  /* Fila 1: ☰ ⏮ nombre ⏭ Pedal Canciones. Fila 2: vistas + Tablatura. */
+  .app.tactil .barra-superior > button { flex: 0 0 auto; min-height: 36px; padding: 4px 10px; font-size: 13px; }
+  .barra-superior .accion-cabecera.pedal { order: 5; }
+  .barra-superior .accion-cabecera.salir { order: 6; }
+  .barra-superior .pestanas { order: 10; width: auto; flex: 1 1 auto; min-width: 0; }
+  .app.tactil .barra-superior .pestanas button { flex: 1; min-height: 34px; padding: 4px 2px; font-size: 13px; }
+  .barra-superior .accion-cabecera:not(.salir):not(.pedal) { order: 11; }
+  .barra-superior .nombre-proyecto { font-size: 14px; }
+  .transporte { padding: 4px 8px; }
+  .app.tactil .boton-redondo { width: 40px; height: 40px; min-height: 40px; }
+  .app.tactil .boton-redondo.reproducir { width: 48px; height: 48px; }
+  .reloj .compas { font-size: 11px; }
+  .barra-sala { padding: 4px 8px; font-size: 12.5px; gap: 6px; }
+  .app.tactil .barra-sala button { min-height: 32px; padding: 3px 10px; font-size: 12.5px; }
+}
+/* Teléfono tumbado: todo en una fila y el transporte al mínimo. */
+@media (max-height: 500px) and (min-width: 560px) {
+  .barra-superior { flex-wrap: nowrap; }
+  .barra-superior .nombre-proyecto { flex: 1 1 60px; min-width: 60px; }
+  .barra-superior .pestanas { order: 4; flex: 0 0 auto; }
+  .app.tactil .barra-superior .pestanas button { padding: 4px 8px; }
+  .app.tactil .barra-superior > button { padding: 4px 8px; }
+  .barra-superior .accion-cabecera:not(.salir):not(.pedal) { order: 5; }
+  .barra-superior .accion-cabecera.pedal { order: 6; }
+  .barra-superior .accion-cabecera.salir { order: 12; }
+  .app.tactil .boton-redondo { width: 34px; height: 34px; min-height: 34px; }
+  .app.tactil .boton-redondo.reproducir { width: 40px; height: 40px; }
+  .transporte { padding: 2px 8px; }
+  .reloj { padding: 2px 8px; }
 }

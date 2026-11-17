@@ -80,3 +80,25 @@ cd ~/ProjectFalab/app && npm run dev
 ```
 
 y abrir `http://127.0.0.1:1420/?reproductor=1`.
+
+## iPhone
+
+La app del iPad es la misma que la del iPhone: se instala igual, con el mismo script y los mismos
+pasos en Xcode, eligiendo el iPhone como dispositivo.
+
+```bash
+./scripts/preparar_ipad.sh
+```
+
+En el iPhone la interfaz se compacta sola: la cabecera ocupa dos filas en vertical y una sola con
+el teléfono tumbado, y los ajustes del transporte (velocidad, tono, metrónomo, «Dirigir sesión
+sincronizada») se abren con el botón «Ajustes». Tumbado es como mejor se lee el karaoke.
+
+Con una cuenta de Apple gratuita, la app instalada desde Xcode caduca a los 7 días: basta con
+volver a pulsar ▶ en Xcode para renovarla (las canciones guardadas se conservan).
+
+## Icono
+
+Los iconos de iPad/iPhone y Android están en `app/src-tauri/icons/ios` y
+`app/src-tauri/icons/android`; los scripts `preparar_ipad.sh` y `preparar_android.sh` los copian
+al proyecto cada vez que se ejecutan.

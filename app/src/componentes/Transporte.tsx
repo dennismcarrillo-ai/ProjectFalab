@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { usarApp, usarReproduccion } from "../estado/almacen";
 import { enReproductor } from "../servicios/motor";
 import { MezclaRapida } from "./MezclaRapida";
+import { dirigir, usarSala } from "../sincronia/sala";
 import { formatearSemitonos, formatearTiempo } from "../util/formato";
 import { IconoBucle, IconoDetener, IconoIman, IconoMetronomo, IconoPausa, IconoReproducir } from "../util/iconos";
 
@@ -56,6 +57,7 @@ export function Transporte() {
   const { ajustarProyecto, alternarReproduccion, detener, alternarBucle, fijar, alternarShow } = usarApp.getState();
   const show = usarApp((s) => s.showContinuo);
   const [desplegado, fijarDesplegado] = useState(false);
+  const salaLibre = usarSala((s) => s.disponible && s.modo === "ninguno" && !s.sala);
   const grabacion = usarApp((s) => s.grabacion);
   const textoDeGrabacion = { preparando: "Preparando…", esperando: "Cuenta…", grabando: "● Grabando", guardando: "Guardando…" };
   const bucle = usarApp((s) => s.bucle);
@@ -97,6 +99,8 @@ export function Transporte() {
       <button className={`conmutador-ajustes ${desplegado ? "activo" : ""}`} aria-expanded={desplegado}
         onClick={() => fijarDesplegado(!desplegado)}>Ajustes</button>
       <div className={`secundarios ${desplegado ? "" : "plegados"}`}>
+      {/* En el teléfono no hay sitio para la barra de sincronización: su botón vive aquí. */}
+      {salaLibre && <button className="dirigir-en-ajustes" onClick={dirigir}>Dirigir sesión sincronizada</button>}
       <div className="separador" />
 
       <div className="grupo" title="Cambia la velocidad sin alterar el tono">

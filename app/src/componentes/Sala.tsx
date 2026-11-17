@@ -53,7 +53,7 @@ export function BarraDeSala() {
   }
 
   return (
-    <div className="barra-sala discreta">
+    <div className={`barra-sala discreta ${hayProyecto ? "con-proyecto" : ""}`}>
       <span className="tenue crecer">
         {hayProyecto ? "Sincroniza esta canción en los dispositivos de la banda." : "Sesión sincronizada: todos ven la misma canción a la vez."}
       </span>
