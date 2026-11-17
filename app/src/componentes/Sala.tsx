@@ -29,10 +29,11 @@ export function BarraDeSala() {
         <span className="punto-vivo" aria-hidden />
         <strong>Siguiendo a {sala.director}</strong>
         <span className="tenue crecer">{falta ?? (sala.nombre ? `«${sala.nombre}»` : "Esperando a que abra una canción…")}</span>
-        <label className="casilla" title="Por defecto este dispositivo va en silencio, para no pisar el sonido del director">
+        <label className="casilla" title="Sin marcar, este dispositivo es un teleprónter: muestra letra y acordes sin descargar audio">
           <input type="checkbox" checked={escuchar} onChange={(e) => fijarEscucha(e.target.checked)} />
           Oír aquí
         </label>
+        <button onClick={dirigir} title="Pasas a dirigir tú: los demás te seguirán a ti">Dirigir yo</button>
         <button onClick={dejar}>Dejar de seguir</button>
       </div>
     );

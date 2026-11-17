@@ -104,11 +104,14 @@ Con la banda conectada aparece una barra bajo la cabecera:
 
 Detalles:
 
-- Los seguidores van **en silencio** por defecto, para no pisar el sonido del director. La casilla
-  «Oír aquí» lo activa (útil si cada uno está en un sitio distinto, con auriculares).
-- El director ve quién le sigue. Si otro pulsa «Dirigir yo», toma el relevo.
+- Los seguidores son un **teleprónter**: muestran letra, acordes, partitura y tablatura siguiendo
+  el reloj del director, pero no descargan ni reproducen audio. Así no dependen de la velocidad de
+  la red ni se atascan. La casilla «Oír aquí» activa el audio en ese dispositivo (útil si cada uno
+  está en un sitio distinto, con auriculares).
+- Cualquiera puede dirigir: basta con pulsar «Dirigir yo» y los demás pasan a seguirle.
+- El director ve quién le sigue.
 - La posición se corrige sola: cada dispositivo mide su desfase con el reloj de la Mac de la banda
-  y se recoloca si se aleja más de 80 ms.
+  y coloca la pantalla en el punto exacto (con «Oír aquí», el audio se recoloca si se aleja más de 80 ms).
 - Cada seguidor necesita la canción: vale la de la biblioteca de la banda (se reproduce por
   internet) o una copia guardada en el dispositivo.
 - En la Mac hace falta tener encendido «Compartir con la banda» para que aparezca la barra.

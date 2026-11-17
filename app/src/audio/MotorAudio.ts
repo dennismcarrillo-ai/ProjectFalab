@@ -103,6 +103,11 @@ export class MotorAudio {
   /** Última etapa antes de los altavoces: permite silenciar el dispositivo sin tocar la mezcla. */
   private salida: GainNode | null = null;
   private silencio = false;
+  /**
+   * Modo teleprónter: este dispositivo solo muestra letra, acordes y partitura siguiendo un reloj
+   * ajeno (el del director de la sesión). No se descarga ni se reproduce audio.
+   */
+  private teleprompter = false;
 
   private proyecto: Proyecto | null = null;
   private pulsos: Pulso[] = [];
@@ -224,6 +229,7 @@ export class MotorAudio {
   }
 
   private recibir(mensaje: MensajeDelProcesador): void {
+    if (this.teleprompter) return; // la posición la marca el director, no este procesador
     if (mensaje.tipo === "posicion") {
       this.estado = {
         estado: mensaje.estado,
@@ -364,7 +370,17 @@ export class MotorAudio {
     if (this.salida && this.contexto) this.salida.gain.setTargetAtTime(silencio ? 0 : 1, this.contexto.currentTime, 0.02);
   }
 
+  /** Activa o desactiva el modo teleprónter (ver el campo del mismo nombre). */
+  fijarTeleprompter(activo: boolean): void {
+    if (activo === this.teleprompter) return;
+    if (activo) this.pausar();
+    this.teleprompter = activo;
+    if (activo) this.cola = [];
+    else this.planificarFragmentos();
+  }
+
   async reproducir(opciones: { sinCuenta?: boolean } = {}): Promise<void> {
+    if (this.teleprompter) return;
     await this.iniciar();
     const p = this.proyecto;
     if (!p) return;
@@ -399,7 +415,7 @@ export class MotorAudio {
   /** Calcula qué fragmentos hacen falta alrededor del cursor, pide los que falten y suelta el resto. */
   private planificarFragmentos(): void {
     const p = this.proyecto;
-    if (!p || !this.nodo) return;
+    if (!p || !this.nodo || this.teleprompter) return;
     const necesarios = new Set<string>();
     const anotar = (proyecto: Proyecto, desde: number, hasta: number) => {
       for (const pista of proyecto.pistas) {

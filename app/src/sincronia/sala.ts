@@ -22,7 +22,10 @@ interface SalaLocal {
   sala: EstadoDeSala | null;
   /** Quiénes están siguiendo ahora mismo. */
   siguen: string[];
-  /** Al seguir: ¿suena también en este dispositivo? Por defecto no, para no pisar al director. */
+  /**
+   * Al seguir: ¿suena también en este dispositivo? Por defecto no: el seguidor es un teleprónter
+   * (letra, acordes y partitura) que no descarga audio, así no depende de la red ni se atasca.
+   */
   escuchar: boolean;
   /** Motivo por el que no se puede seguir la canción actual (por ejemplo, no está en el dispositivo). */
   falta: string | null;
@@ -111,6 +114,13 @@ function ajustar(): void {
   const local = usarReproduccion.getState();
   const objetivo = objetivoDe(sala);
   const sonando = sala.sonando && objetivo < proyecto.duracion;
+  if (!usarSala.getState().escuchar) {
+    // Teleprónter: sin audio; el reloj de la pantalla es directamente el del director.
+    usarReproduccion.setState({
+      estado: sonando ? "reproduciendo" : "detenido", posicion: Math.min(objetivo, proyecto.duracion), cuenta: 0, esperando: false,
+    });
+    return;
+  }
   if (!sonando) {
     if (local.estado !== "detenido") motorAudio.pausar();
     const destino = Math.min(objetivo, proyecto.duracion);
@@ -239,17 +249,25 @@ function recibir(respuesta: RespuestaDeSala): void {
 }
 
 function dejarDeSeguir(): void {
+  const posicion = usarReproduccion.getState().posicion;
   usarSala.setState({ modo: "ninguno", falta: null });
+  motorAudio.fijarTeleprompter(false);
   motorAudio.pausar();
-  motorAudio.fijarSilencio(false);
+  usarReproduccion.setState({ estado: "detenido", cuenta: 0, esperando: false });
+  // El reproductor propio se queda donde iba la sesión: quien tome el relevo sigue desde ahí.
+  if (usarApp.getState().proyecto) motorAudio.saltar(posicion);
+}
+
+function prepararAudio(): void {
+  void motorAudio.iniciar().catch((error) => avisar(`No se pudo preparar el audio: ${(error as Error).message}`, "error"));
 }
 
 /** Empieza a seguir al director. Debe llamarse desde un toque: así el navegador deja sonar. */
 export function seguir(): void {
   const { sala, escuchar } = usarSala.getState();
   if (!sala) return;
-  motorAudio.fijarSilencio(!escuchar);
-  void motorAudio.iniciar().catch((error) => avisar(`No se pudo preparar el audio: ${(error as Error).message}`, "error"));
+  motorAudio.fijarTeleprompter(!escuchar);
+  if (escuchar) prepararAudio();
   usarSala.setState({ modo: "siguiendo", falta: null });
   void calibrar().then(aplicar);
 }
@@ -273,7 +291,13 @@ export function dejar(): void {
 
 export function fijarEscucha(escuchar: boolean): void {
   usarSala.setState({ escuchar });
-  if (usarSala.getState().modo === "siguiendo") motorAudio.fijarSilencio(!escuchar);
+  if (usarSala.getState().modo !== "siguiendo") return;
+  motorAudio.fijarTeleprompter(!escuchar);
+  if (escuchar) {
+    prepararAudio();
+    quietoHasta = 0;
+  }
+  ajustar();
 }
 
 // ------------------------------------------------------------------ puesta en marcha
@@ -314,10 +338,16 @@ export function iniciarSala(): void {
   setInterval(() => {
     const { modo } = usarSala.getState();
     latidos++;
-    if (modo === "siguiendo") ajustar();
+    if (modo === "siguiendo" && usarSala.getState().escuchar) ajustar();
     if (modo === "dirigiendo" && latidos % 4 === 0) publicar(true);
     if (modo !== "ninguno" && latidos % 120 === 0) void calibrar();
   }, 1000);
+
+  // Teleprónter: la pantalla se mueve con el reloj del director, unas 30 veces por segundo.
+  setInterval(() => {
+    const { modo, escuchar } = usarSala.getState();
+    if (modo === "siguiendo" && !escuchar) ajustar();
+  }, 33);
 
   // Al cerrar la página, el director suelta la sala para que nadie se quede esperando.
   window.addEventListener("pagehide", () => {
