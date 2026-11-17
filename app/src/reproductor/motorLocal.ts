@@ -8,7 +8,7 @@
  * Lo que NO hace: analizar canciones, editar clips ni exportar. Eso sigue siendo del escritorio.
  */
 import type { Analisis, Cifrado, Nota, Playlist, Proyecto, ResumenProyecto } from "../tipos";
-import { DecodificadorFlac } from "./flac";
+import { abrirAudio, type FuenteDeAudio } from "./decodificadorEnHilo";
 import { borrarProyecto, copiarAlAlmacen, listarProyectos, sistemaDeArchivos } from "./almacen";
 import { canciones as cancionesDeBanda, LectorDeBanda, urlDelPaquete, type EnCola, type SesionDeBanda } from "./banda";
 import { LectorDeBlob, type Lector } from "./lector";
@@ -30,7 +30,7 @@ interface Abierto {
   paquete: Paquete;
   proyecto: Proyecto;
   datos: DatosDelReproductor;
-  audio: Map<string, Promise<DecodificadorFlac>>;
+  audio: Map<string, Promise<FuenteDeAudio>>;
 }
 
 interface Origen {
@@ -261,7 +261,7 @@ export class MotorLocal {
     if (!decodificador) {
       const datos = abierto.proyecto.fuentes.find((f) => f.id === fuente);
       if (!datos) throw new Error("Fuente desconocida.");
-      decodificador = abierto.paquete.archivo(datos.archivo).then((lector) => DecodificadorFlac.abrir(lector));
+      decodificador = abierto.paquete.archivo(datos.archivo).then((lector) => abrirAudio(lector));
       abierto.audio.set(fuente, decodificador);
     }
     const muestras = await (await decodificador).leer(inicio, frames);
