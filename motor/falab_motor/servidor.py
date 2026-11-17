@@ -357,6 +357,27 @@ def banda_fijar(cuerpo: dict = Body(...)) -> dict:
         raise HTTPException(400, str(error)) from error
 
 
+# La Mac también puede dirigir o seguir la sala de sincronización, sin cuenta: es la anfitriona.
+@app.get("/banda/sala")
+def banda_sala(sigue: int = 0) -> dict:
+    if not banda.estado()["activo"]:
+        return {"version": -1, "ahora": 0, "sala": None, "siguen": [], "disponible": False}
+    return banda.sala_actual("Mac" if sigue else None)
+
+
+@app.post("/banda/sala")
+def banda_publicar_sala(cuerpo: dict = Body(...)) -> dict:
+    try:
+        return banda.sala_publicar("Mac", cuerpo)
+    except (ValueError, TypeError) as error:
+        raise HTTPException(400, "Petición no válida.") from error
+
+
+@app.delete("/banda/sala")
+def banda_cerrar_sala(cliente: str = "") -> dict:
+    return banda.sala_cerrar(cliente)
+
+
 @app.post("/banda/usuarios")
 def banda_crear_usuario(cuerpo: dict = Body(...)) -> dict:
     try:

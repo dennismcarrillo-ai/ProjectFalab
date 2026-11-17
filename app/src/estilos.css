@@ -477,3 +477,15 @@ input[type="range"] { accent-color: var(--menta); height: 16px; margin: 0; }
 .en-cola .titulo { font-weight: 600; flex: 1 1 160px; }
 .en-cola .barra-progreso { flex: 0 0 120px; margin: 0; display: block; }
 .en-cola .barra-progreso > span { display: block; height: 100%; background: linear-gradient(90deg, var(--menta-oscuro), var(--menta)); }
+
+/* ---------- sala de sincronización ---------- */
+.barra-sala { display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 13px;
+  background: rgba(94, 234, 212, .10); border-bottom: 1px solid rgba(94, 234, 212, .25); flex-wrap: wrap; }
+.barra-sala.discreta { background: transparent; border-bottom-color: var(--borde, rgba(255,255,255,.08)); padding: 4px 12px; }
+.barra-sala.dirigiendo { background: rgba(251, 191, 36, .12); border-bottom-color: rgba(251, 191, 36, .35); }
+.barra-sala .crecer { flex: 1; min-width: 0; }
+.barra-sala .punto-vivo { width: 8px; height: 8px; border-radius: 50%; background: #5eead4; animation: latido-sala 1.4s ease-in-out infinite; }
+.barra-sala.dirigiendo .punto-vivo { background: #fbbf24; }
+.barra-sala.discreta button { padding: 3px 10px; font-size: 12px; }
+@keyframes latido-sala { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .barra-sala .punto-vivo { animation: none; } }

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { DialogoBanda } from "./componentes/Banda";
+import { BarraDeSala } from "./componentes/Sala";
+import { iniciarSala } from "./sincronia/sala";
 import { Aviso, DialogoDrive, DialogoExportar, Progreso } from "./componentes/Dialogos";
 import { DialogoEstructura, DialogoPedal } from "./componentes/Directo";
 import { DialogoPreanalisis } from "./componentes/Preanalisis";
@@ -123,6 +125,7 @@ export function App() {
   usarAtajos();
   usarPantallaDespierta();
   useEffect(() => void conectar(), [conectar]);
+  useEffect(() => iniciarSala(), []);
 
   let contenido;
   if (errorMotor) {
@@ -202,6 +205,7 @@ export function App() {
           </>
         )}
       </header>
+      <BarraDeSala />
       {contenido}
       {dialogo === "exportar" && proyecto && <DialogoExportar />}
       {dialogo === "drive" && <DialogoDrive />}

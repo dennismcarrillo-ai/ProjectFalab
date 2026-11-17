@@ -40,6 +40,29 @@ export interface EstadoDrive {
   ultimaSincronizacion: string | null;
 }
 
+/** Estado de la sala de sincronización: quién dirige, qué canción y por dónde va. */
+export interface EstadoDeSala {
+  director: string;
+  cliente: string;
+  proyecto: string;
+  nombre: string;
+  sonando: boolean;
+  /** Posición de la canción (s) en el instante `momento` (hora del servidor, ms). */
+  posicion: number;
+  momento: number;
+  velocidad: number;
+  tono: number;
+}
+
+export interface RespuestaDeSala {
+  version: number;
+  ahora: number;
+  sala: EstadoDeSala | null;
+  siguen: string[];
+  disponible: boolean;
+  relevado?: boolean;
+}
+
 const enTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /**
@@ -224,6 +247,10 @@ export const motor = {
     crearUsuario: (nombre: string, clave: string) => json<{ id: string; nombre: string }>("POST", "/banda/usuarios", { nombre, clave }),
     cambiarClave: (id: string, clave: string) => json("PUT", `/banda/usuarios/${id}`, { clave }),
     eliminarUsuario: (id: string) => json("DELETE", `/banda/usuarios/${id}`),
+    /** Sala de sincronización, vista desde la propia Mac (que no necesita cuenta). */
+    sala: (sigue: boolean) => json<RespuestaDeSala>("GET", `/banda/sala?sigue=${sigue ? 1 : 0}`),
+    publicarSala: (datos: unknown) => json<RespuestaDeSala>("POST", "/banda/sala", datos),
+    cerrarSala: (cliente: string) => json<RespuestaDeSala>("DELETE", `/banda/sala?cliente=${encodeURIComponent(cliente)}`),
   },
   drive: {
     estado: () => json<EstadoDrive>("GET", "/drive/estado"),

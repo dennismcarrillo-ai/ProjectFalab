@@ -59,7 +59,7 @@ export function normalizarUrl(texto: string): string {
   return /^https?:\/\//i.test(limpio) ? limpio : `https://${limpio}`;
 }
 
-async function pedir<T>(sesion: Pick<SesionDeBanda, "url"> & { testigo?: string }, metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
+export async function pedir<T>(sesion: Pick<SesionDeBanda, "url"> & { testigo?: string }, metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
   let respuesta: Response;
   try {
     respuesta = await fetch(sesion.url + ruta, {

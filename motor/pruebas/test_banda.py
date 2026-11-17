@@ -179,3 +179,32 @@ def test_administracion_desde_la_app_de_escritorio(carpeta_de_datos, monkeypatch
     cliente.delete(f"/banda/usuarios/{caro['id']}")
     estado = cliente.put("/banda", json={"activo": False}).json()
     assert estado["usuarios"] == [] and estado["activo"] is False and arranques == ["arrancar", "detener"]
+
+
+def test_sala_de_sincronizacion():
+    """Un dispositivo dirige, los demás ven el estado; quien publica el último toma la dirección."""
+    from falab_motor import banda
+
+    banda.sala_cerrar(banda.sala_actual()["sala"]["cliente"]) if banda.sala_actual()["sala"] else None
+    inicial = banda.sala_actual()
+    assert inicial["sala"] is None
+
+    publicado = banda.sala_publicar("Ana", {"cliente": "a", "proyecto": "p1", "nombre": "Canción", "sonando": True,
+                                            "posicion": 12.5, "momento": 1000.0, "velocidad": 1, "tono": 2})
+    assert publicado["version"] == inicial["version"] + 1 and not publicado["relevado"]
+    assert publicado["sala"]["director"] == "Ana" and publicado["sala"]["tono"] == 2
+
+    # Un latido idéntico no cambia la versión (los seguidores no se despiertan en balde).
+    datos = {"cliente": "a", "proyecto": "p1", "nombre": "Canción", "sonando": True, "posicion": 12.5,
+             "momento": 1000.0, "velocidad": 1, "tono": 2, "latido": True}
+    assert banda.sala_publicar("Ana", datos)["version"] == publicado["version"]
+    assert banda.sala_actual("Luis")["siguen"] == ["Luis"]
+
+    # Luis toma la dirección; el latido de Ana ya no manda y se le avisa del relevo.
+    banda.sala_publicar("Luis", {"cliente": "b", "proyecto": "p2", "posicion": 0})
+    relevo = banda.sala_publicar("Ana", datos)
+    assert relevo["relevado"] and relevo["sala"]["director"] == "Luis"
+
+    # Solo quien dirige puede cerrar la sala.
+    assert banda.sala_cerrar("a")["sala"] is not None
+    assert banda.sala_cerrar("b")["sala"] is None

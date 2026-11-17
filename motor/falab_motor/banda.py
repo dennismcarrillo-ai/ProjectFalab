@@ -12,6 +12,7 @@ No hay nube ni servidores de terceros: las cuentas, las canciones y el análisis
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -246,6 +247,67 @@ def paquete_virtual(id_proyecto: str) -> ZipVirtual:
 
 # ------------------------------------------------------------------ aplicación web
 
+# ------------------------------------------------------------------ sala de sincronización
+#
+# Un dispositivo «dirige» (publica qué canción suena y por dónde va) y los demás «siguen». La
+# posición viaja con la hora del servidor en que era cierta: cada dispositivo calcula su desfase
+# con ese reloj y así todos caen en el mismo punto aunque el aviso tarde en llegarles.
+
+SALA_CADUCA = 20.0      # segundos sin latido del director para dar la sesión por terminada
+_sala: dict = {"version": 0, "estado": None, "latido": 0.0, "siguen": {}}
+
+
+def _ahora_ms() -> float:
+    return time.time() * 1000
+
+
+def sala_actual(sigue: str | None = None) -> dict:
+    """Estado de la sala. `sigue` apunta a quien pregunta como seguidor, para que el director lo vea."""
+    with _cerrojo:
+        ahora = time.time()
+        if _sala["estado"] is not None and ahora - _sala["latido"] > SALA_CADUCA:
+            _sala["estado"] = None
+            _sala["version"] += 1
+        if sigue:
+            _sala["siguen"][sigue] = ahora
+        siguen = sorted(nombre for nombre, visto in _sala["siguen"].items() if ahora - visto < 40)
+        return {"version": _sala["version"], "ahora": _ahora_ms(), "sala": _sala["estado"], "siguen": siguen,
+                "disponible": True}
+
+
+def sala_publicar(director: str, datos: dict) -> dict:
+    """El director publica el estado del transporte. Quien publica el último pasa a dirigir."""
+    estado = {
+        "director": director,
+        "cliente": str(datos.get("cliente", ""))[:64],
+        "proyecto": str(datos.get("proyecto", ""))[:64],
+        "nombre": str(datos.get("nombre", ""))[:200],
+        "sonando": bool(datos.get("sonando")),
+        "posicion": max(0.0, float(datos.get("posicion", 0))),
+        "momento": float(datos.get("momento", _ahora_ms())),
+        "velocidad": min(2.0, max(0.25, float(datos.get("velocidad", 1)))),
+        "tono": int(min(12, max(-12, float(datos.get("tono", 0))))),
+    }
+    with _cerrojo:
+        anterior = _sala["estado"]
+        # Otro dispositivo tomó la dirección: el latido del antiguo director ya no cuenta.
+        relevado = bool(anterior and anterior["cliente"] != estado["cliente"] and datos.get("latido"))
+        if not relevado:
+            _sala["latido"] = time.time()
+            if anterior != estado:
+                _sala["estado"] = estado
+                _sala["version"] += 1
+    return sala_actual() | {"relevado": relevado}
+
+
+def sala_cerrar(cliente: str) -> dict:
+    with _cerrojo:
+        if _sala["estado"] is not None and _sala["estado"]["cliente"] == cliente:
+            _sala["estado"] = None
+            _sala["version"] += 1
+    return sala_actual()
+
+
 def _carpeta_web() -> Path:
     """Interfaz web ya compilada (la genera `npm run build`, que forma parte de compilar la app)."""
     return Path(__file__).resolve().parents[2] / "app" / "dist"
@@ -305,6 +367,30 @@ def crear_app(trabajos: GestorTrabajos) -> FastAPI:
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
         return {"cambiada": True}
+
+    @app.get("/banda/sala")
+    async def sala(peticion: Request, version: int = -1, espera: float = 0, sigue: int = 0) -> dict:
+        usuario = exigir(peticion)
+        # Espera larga: la respuesta se retiene hasta que la sala cambie, y así el aviso es inmediato.
+        limite = time.time() + min(max(espera, 0.0), 25.0)
+        while True:
+            actual = sala_actual(usuario["nombre"] if sigue else None)
+            if actual["version"] != version or time.time() >= limite or await peticion.is_disconnected():
+                return actual
+            await asyncio.sleep(0.05)
+
+    @app.post("/banda/sala")
+    async def publicar_sala(peticion: Request) -> dict:
+        usuario = exigir(peticion)
+        try:
+            return sala_publicar(usuario["nombre"], await peticion.json())
+        except (ValueError, TypeError) as error:
+            raise HTTPException(400, "Petición no válida.") from error
+
+    @app.delete("/banda/sala")
+    def cerrar_sala(peticion: Request, cliente: str = "") -> dict:
+        exigir(peticion)
+        return sala_cerrar(cliente)
 
     @app.get("/banda/canciones")
     def canciones(peticion: Request) -> dict:

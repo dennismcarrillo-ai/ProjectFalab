@@ -84,6 +84,9 @@ export class MotorAudio {
   private canales: Canal[] = [];
   private maestro: GainNode | null = null;
   private clics: GainNode | null = null;
+  /** Última etapa antes de los altavoces: permite silenciar el dispositivo sin tocar la mezcla. */
+  private salida: GainNode | null = null;
+  private silencio = false;
 
   private proyecto: Proyecto | null = null;
   private pulsos: Pulso[] = [];
@@ -134,8 +137,11 @@ export class MotorAudio {
       numberOfOutputs: MAX_PISTAS + 1,
       outputChannelCount: new Array(MAX_PISTAS + 1).fill(2),
     });
+    const salida = contexto.createGain();
+    salida.gain.value = this.silencio ? 0 : 1;
+    salida.connect(contexto.destination);
     const maestro = contexto.createGain();
-    maestro.connect(contexto.destination);
+    maestro.connect(salida);
     // Una sola reverb por convolución para todas las pistas: cada una decide cuánto le envía.
     const sala = contexto.createConvolver();
     sala.normalize = false; // la respuesta ya viene calibrada: así coincide con la exportación
@@ -155,13 +161,14 @@ export class MotorAudio {
     }
     // El metrónomo va directo a la salida: no le afecta el volumen maestro ni la mezcla.
     const clics = contexto.createGain();
-    nodo.connect(clics, MAX_PISTAS).connect(contexto.destination);
+    nodo.connect(clics, MAX_PISTAS).connect(salida);
 
     nodo.port.onmessage = (evento: MessageEvent<MensajeDelProcesador>) => this.recibir(evento.data);
     this.contexto = contexto;
     this.nodo = nodo;
     this.maestro = maestro;
     this.clics = clics;
+    this.salida = salida;
     if (this.proyecto) {
       const proyecto = this.proyecto;
       this.firmaMontaje = "";
@@ -334,7 +341,13 @@ export class MotorAudio {
     return bpm;
   }
 
-  async reproducir(): Promise<void> {
+  /** Silencia (o no) este dispositivo: el reloj sigue corriendo, así que la letra y los acordes avanzan. */
+  fijarSilencio(silencio: boolean): void {
+    this.silencio = silencio;
+    if (this.salida && this.contexto) this.salida.gain.setTargetAtTime(silencio ? 0 : 1, this.contexto.currentTime, 0.02);
+  }
+
+  async reproducir(opciones: { sinCuenta?: boolean } = {}): Promise<void> {
     await this.iniciar();
     const p = this.proyecto;
     if (!p) return;
@@ -343,7 +356,7 @@ export class MotorAudio {
     // N compases de 1 a 6 tiempos, contados a negras o a corcheas.
     const tiempos = p.metronomo.cuentaTiempos ?? p.compas;
     const porTiempo = p.metronomo.cuentaFigura === "corchea" ? 2 : 1;
-    const clics = p.metronomo.cuentaRegresiva * tiempos * porTiempo;
+    const clics = opciones.sinCuenta ? 0 : p.metronomo.cuentaRegresiva * tiempos * porTiempo;
     const intervalo = ((60 / (this.bpmEn(desde) * p.velocidad)) * FRECUENCIA) / porTiempo;
     this.planificarFragmentos();
     this.enviar({

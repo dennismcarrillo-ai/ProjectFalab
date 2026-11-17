@@ -91,3 +91,26 @@ En las apps de iPad y Android es igual, escribiendo además la dirección de la 
 El servidor, las cuentas, el streaming y la subida están probados con pruebas automáticas y de
 punta a punta en un navegador contra el servidor real, en la misma máquina. **No se ha probado a
 través de un túnel de Tailscale ni desde otra red**: eso es lo que queda por confirmar en tu Mac.
+
+## Sesión sincronizada (todos ven la canción a la vez)
+
+Con la banda conectada aparece una barra bajo la cabecera:
+
+1. Quien lleva la canción pulsa **Dirigir sesión** (puede ser la Mac, la web, el iPad o el Android).
+2. A los demás les sale el aviso «*Nombre* dirige una sesión sincronizada» y pulsan **Seguir**.
+3. Desde ese momento, todo lo que haga el director con el transporte (abrir una canción,
+   reproducir, pausar, saltar a otro punto, cambiar velocidad o tono) se repite en los demás
+   dispositivos. Cada músico elige su vista: karaoke, cancionero, partitura, tablatura o mezcla.
+
+Detalles:
+
+- Los seguidores van **en silencio** por defecto, para no pisar el sonido del director. La casilla
+  «Oír aquí» lo activa (útil si cada uno está en un sitio distinto, con auriculares).
+- El director ve quién le sigue. Si otro pulsa «Dirigir yo», toma el relevo.
+- La posición se corrige sola: cada dispositivo mide su desfase con el reloj de la Mac de la banda
+  y se recoloca si se aleja más de 80 ms.
+- Cada seguidor necesita la canción: vale la de la biblioteca de la banda (se reproduce por
+  internet) o una copia guardada en el dispositivo.
+- En la Mac hace falta tener encendido «Compartir con la banda» para que aparezca la barra.
+- Si el director deja de dar señales durante 20 segundos (cerró la app, se quedó sin red), la
+  sesión termina sola.
