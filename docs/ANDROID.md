@@ -54,3 +54,17 @@ probado todavía.** En particular, quedan por confirmar en un dispositivo:
 - que la pantalla se mantiene encendida mientras suena.
 
 Si la compilación o la app fallan, el texto del error es lo que hace falta para corregirlo.
+
+## Tabletas Android
+
+El mismo APK sirve para teléfonos y tabletas: se instala igual. En una tableta la interfaz usa el
+diseño amplio (como en el iPad): mezclador con todas las pistas a la vista en horizontal, y en
+vertical la cabecera se reparte en dos filas y la biblioteca en una sola columna.
+
+Si al instalar el APK la tableta dice «La aplicación no es compatible» o «No se ha instalado la
+aplicación», probablemente es de 32 bits (modelos antiguos o muy económicos). Genera el APK con
+las dos variantes:
+
+```bash
+./scripts/preparar_android.sh --32bits
+```

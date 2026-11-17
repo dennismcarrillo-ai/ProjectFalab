@@ -542,3 +542,18 @@ html { -webkit-text-size-adjust: 100%; }
   .transporte { padding: 2px 8px; }
   .reloj { padding: 2px 8px; }
 }
+
+/* ---------- tabletas en vertical (iPad, tabletas Android): la biblioteca no cabe en dos columnas ---------- */
+@media (max-width: 1000px) {
+  .app.tactil .biblioteca { flex-direction: column; }
+  .app.tactil .playlists { flex: none; width: 100%; }
+  .app.tactil .lista-proyectos { width: 100%; min-width: 0; }
+  .app.tactil .proyecto-fila { flex-wrap: wrap; row-gap: 2px; }
+  .app.tactil .proyecto-fila .titulo { flex-basis: 60%; min-width: 0; }
+  .app.tactil .proyecto-fila .dato { min-width: 0; text-align: left; }
+  .app.tactil .cabecera-lista { flex-wrap: wrap; }
+  /* La cabecera pasa a dos filas en vez de dejar botones fuera de la pantalla. */
+  .app.tactil .barra-superior { flex-wrap: wrap; row-gap: 6px; }
+  .app.tactil .barra-superior .estado-guardado { display: none; }
+  .app.tactil .barra-superior .nombre-proyecto { flex: 1 1 120px; min-width: 0; max-width: none; }
+}

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Compila falab para Android (reproductor) y genera un APK instalable. Se ejecuta en la Mac.
+# Compila falab para Android (teléfonos y tabletas) y genera un APK instalable. Se ejecuta en la Mac.
+# Uso:  ./scripts/preparar_android.sh            -> dispositivos de 64 bits (lo habitual)
+#       ./scripts/preparar_android.sh --32bits  -> además, tabletas antiguas de 32 bits
 # Requisitos: Android Studio instalado (con el SDK, el NDK y las «Command-line Tools») y haber
 # ejecutado antes scripts/instalar_mac.sh.
 set -euo pipefail
@@ -54,7 +56,11 @@ cp -R src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
 echo "==> 4/4 Compilando el APK (la primera vez tarda bastante)"
 # Versión de depuración: va firmada con una clave de pruebas y se puede instalar directamente.
-npm run tauri android build -- --debug --apk --target aarch64
+# Casi todos los teléfonos y tabletas son de 64 bits (aarch64). Con --32bits se añade la variante
+# para tabletas antiguas o muy económicas, y sale un único APK que sirve para las dos.
+DESTINOS=(--target aarch64)
+[[ "${1:-}" == "--32bits" ]] && DESTINOS=(--target aarch64 --target armv7)
+npm run tauri android build -- --debug --apk "${DESTINOS[@]}"
 
 APK="$(find src-tauri/gen/android -name '*.apk' -newer package.json 2>/dev/null | head -1)"
 cat <<FIN
