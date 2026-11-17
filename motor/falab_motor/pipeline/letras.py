@@ -81,18 +81,25 @@ def _con_mlx(ruta_voz: Path, calidad: str, idioma: str | None) -> dict:
 def _con_faster_whisper(ruta_voz: Path, calidad: str, idioma: str | None) -> dict:
     from faster_whisper import WhisperModel
 
-    modelo = WhisperModel(MODELOS_FASTER.get(calidad, "large-v3-turbo"), device="auto", compute_type="int8")
-    iterador, info = modelo.transcribe(
-        str(ruta_voz), language=idioma, word_timestamps=True,
-        condition_on_previous_text=False, vad_filter=True,
-    )
-    segmentos = [
-        {
-            "inicio": s.start, "fin": s.end, "texto": s.text,
-            "palabras": [{"inicio": p.start, "fin": p.end, "texto": p.word} for p in (s.words or [])],
-        }
-        for s in iterador
-    ]
+    def transcribir(dispositivo: str) -> tuple[list[dict], object]:
+        modelo = WhisperModel(MODELOS_FASTER.get(calidad, "large-v3-turbo"), device=dispositivo, compute_type="int8")
+        iterador, info = modelo.transcribe(
+            str(ruta_voz), language=idioma, word_timestamps=True,
+            condition_on_previous_text=False, vad_filter=True,
+        )
+        return [
+            {
+                "inicio": s.start, "fin": s.end, "texto": s.text,
+                "palabras": [{"inicio": p.start, "fin": p.end, "texto": p.word} for p in (s.words or [])],
+            }
+            for s in iterador
+        ], info
+
+    try:
+        segmentos, info = transcribir("auto")
+    except Exception:   # noqa: BLE001
+        # Con tarjeta NVIDIA pero sin las bibliotecas cuDNN/cuBLAS, la GPU falla: se usa el procesador.
+        segmentos, info = transcribir("cpu")
     del modelo
     gc.collect()
     return {"idioma": info.language, "segmentos": _normalizar(segmentos)}

@@ -49,21 +49,23 @@ fn python_del_motor() -> Result<PathBuf, String> {
     if let Ok(ruta) = std::env::var("FALAB_PYTHON") {
         return Ok(PathBuf::from(ruta));
     }
-    // Lo escribe scripts/instalar_mac.sh al terminar la instalación.
+    // Lo escribe el instalador (scripts/instalar_mac.sh o scripts/instalar_windows.ps1) al terminar.
     let anotada = carpeta_de_datos().join("config").join("ruta_motor.txt");
     if let Ok(texto) = fs::read_to_string(&anotada) {
-        let ruta = PathBuf::from(texto.trim());
+        // Windows puede anteponer una marca invisible (BOM) al guardar el archivo.
+        let ruta = PathBuf::from(texto.trim_start_matches('\u{feff}').trim());
         if ruta.exists() {
             return Ok(ruta);
         }
     }
     // En desarrollo: el entorno virtual está junto al código.
-    let desarrollo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../motor/.venv/bin/python");
+    let relativa = if cfg!(windows) { "../../motor/.venv/Scripts/python.exe" } else { "../../motor/.venv/bin/python" };
+    let desarrollo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relativa);
     if desarrollo.exists() {
         return Ok(desarrollo);
     }
     Err(format!(
-        "No se encontró el motor de falab. Ejecuta scripts/instalar_mac.sh (se esperaba la ruta en {}).",
+        "No se encontró el motor de falab. Ejecuta el instalador (scripts/instalar_mac.sh en macOS, scripts/instalar_windows.ps1 en Windows). Se esperaba la ruta en {}.",
         anotada.display()
     ))
 }
@@ -76,15 +78,33 @@ fn arrancar_motor(motor: &Motor) -> Result<(), String> {
     let registro = File::create(datos.join("motor.log")).map_err(|e| e.to_string())?;
     // Las apps gráficas de macOS no heredan el PATH de la terminal: sin esto no se
     // encontrarían ffmpeg ni rubberband instalados con Homebrew.
+    #[cfg(not(windows))]
     let ruta_sistema = format!(
         "/opt/homebrew/bin:/usr/local/bin:{}",
         std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
     );
-    let mut hijo = Command::new(&python)
+    // En Windows, lo instalado con winget (ffmpeg) queda enlazado en esta carpeta, que una app ya
+    // abierta o lanzada desde el menú Inicio puede no tener todavía en su PATH.
+    #[cfg(windows)]
+    let ruta_sistema = format!(
+        "{}\\Microsoft\\WinGet\\Links;{}",
+        std::env::var("LOCALAPPDATA").unwrap_or_default(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let mut orden = Command::new(&python);
+    // Sin esto, Windows abriría una ventana de consola para el motor.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        orden.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut hijo = orden
         .args(["-m", "falab_motor"])
         .env("FALAB_TOKEN", &motor.testigo)
         .env("PATH", ruta_sistema)
         .env("PYTHONUNBUFFERED", "1")
+        // Windows no usa UTF-8 por defecto al leer y escribir texto: se fuerza para los acentos.
+        .env("PYTHONUTF8", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(registro))

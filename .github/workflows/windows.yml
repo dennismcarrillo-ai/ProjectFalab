@@ -1,0 +1,75 @@
+# Compila falab para Windows y lo publica como descarga (etiqueta «windows»).
+# También ejecuta las pruebas del motor en Windows, para detectar lo que solo falla allí.
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "motor/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: FFmpeg
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Motor (sin modelos de IA)
+        run: pip install -e "motor[dev]"
+
+      - name: Pruebas del motor
+        working-directory: motor
+        run: python -m pytest -q
+
+      - name: Modelos de IA (comprobación de que se instalan y se cargan)
+        run: |
+          pip install -e "motor[ia]"
+          python -c "import torch, demucs, faster_whisper; from basic_pitch import ICASSP_2022_MODEL_PATH; print('IA disponible', torch.__version__, ICASSP_2022_MODEL_PATH)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Interfaz y aplicación
+        working-directory: app
+        run: |
+          npm install
+          npm run tauri build -- --bundles nsis
+
+      - name: Preparar las descargas
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force salida | Out-Null
+          Copy-Item (Get-ChildItem app/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1) salida/falab-windows-setup.exe
+          Compress-Archive -Path app/dist/* -DestinationPath salida/falab-web.zip
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows
+          name: falab para Windows
+          body: |
+            Instalador de falab para Windows (se actualiza solo con cada cambio).
+            No lo instales a mano: sigue docs/WINDOWS.md, que además instala el motor de audio.
+          files: |
+            salida/falab-windows-setup.exe
+            salida/falab-web.zip

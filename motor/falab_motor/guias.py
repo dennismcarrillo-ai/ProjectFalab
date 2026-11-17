@@ -9,8 +9,10 @@ que las guías siguen las fluctuaciones de tempo igual que el metrónomo.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -44,17 +46,30 @@ def sintetizar(texto: str) -> np.ndarray:
     """Devuelve la palabra hablada como onda mono a 44,1 kHz, sin silencio inicial."""
     with tempfile.TemporaryDirectory() as carpeta:
         salida = Path(carpeta) / "voz.wav"
+        entorno = None
         if shutil.which("say"):
             orden = ["say", "-o", str(salida), "--data-format=LEI16@44100"]
             voz = _voz_en_espanol()
             if voz:
                 orden += ["-v", voz]
             orden.append(texto)
+        elif sys.platform == "win32":
+            # Voz del propio Windows (SAPI). El texto viaja por una variable de entorno para no
+            # tener que escaparlo dentro de la orden.
+            guion = (
+                "Add-Type -AssemblyName System.Speech; "
+                "$v = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                "$es = $v.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -like 'es*' } | Select-Object -First 1; "
+                "if ($es) { $v.SelectVoice($es.VoiceInfo.Name) }; "
+                "$v.SetOutputToWaveFile($env:FALAB_VOZ_SALIDA); $v.Speak($env:FALAB_VOZ_TEXTO); $v.Dispose()"
+            )
+            orden = ["powershell", "-NoProfile", "-NonInteractive", "-Command", guion]
+            entorno = {**os.environ, "FALAB_VOZ_SALIDA": str(salida), "FALAB_VOZ_TEXTO": texto}
         elif shutil.which("espeak-ng"):
             orden = ["espeak-ng", "-v", "es", "-s", "165", "-w", str(salida), texto]
         else:
             raise RuntimeError("No hay ningún sintetizador de voz disponible en este equipo.")
-        proceso = subprocess.run(orden, capture_output=True, text=True, timeout=60)
+        proceso = subprocess.run(orden, capture_output=True, text=True, timeout=60, env=entorno)
         if proceso.returncode != 0 or not salida.exists():
             raise RuntimeError(f"No se pudo sintetizar «{texto}»: {proceso.stderr.strip()}")
         onda, fs = sf.read(str(salida), dtype="float32", always_2d=True)

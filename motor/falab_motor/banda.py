@@ -546,9 +546,26 @@ def arrancar(trabajos: GestorTrabajos | None = None) -> None:
             import os
 
             _servidor["despierto"] = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+        _mantener_despierto_en_windows(True)
+
+
+def _mantener_despierto_en_windows(activo: bool) -> None:
+    """En Windows se pide al sistema que no suspenda el equipo mientras se comparte con la banda."""
+    import sys
+
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        CONTINUO, SISTEMA = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(CONTINUO | (SISTEMA if activo else 0))
+    except Exception:   # noqa: BLE001 — es una cortesía: si falla, se comparte igual
+        pass
 
 
 def detener() -> None:
+    _mantener_despierto_en_windows(False)
     with _cerrojo:
         if _servidor["uvicorn"] is not None:
             _servidor["uvicorn"].should_exit = True
