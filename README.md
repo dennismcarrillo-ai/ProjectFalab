@@ -41,6 +41,9 @@ no hay servidores ni coste por uso, y tu música no sale de tu ordenador.
 - **Google Drive**: sincronización de proyectos en la carpeta `falab_projects`, manual o
   automática (con cola y reintentos si no hay conexión).
 
+> **Guía completa para todos los dispositivos** (Mac, Windows, web, iPad, iPhone, Android):
+> [docs/INSTALACION.md](docs/INSTALACION.md)
+
 ## Instalación en macOS (Apple Silicon)
 
 Requisitos: [Homebrew](https://brew.sh) y las herramientas de Xcode (`xcode-select --install`).
