@@ -127,7 +127,7 @@ def test_video_original_toma_de_camara_y_exportacion(carpeta_de_datos, tmp_path)
 
     # Copia ligera en MP4 para la ventana flotante (el MKV original no lo reproduce el WebView).
     info = cliente.get(f"/proyectos/{id_proyecto}/videos/original", params={"solo_ruta": True}).json()
-    assert info["ruta"].endswith("video/original.mp4") and info["inicio"] == 0.0
+    assert info["ruta"].replace("\\", "/").endswith("video/original.mp4") and info["inicio"] == 0.0
     parcial = cliente.get(f"/proyectos/{id_proyecto}/videos/original", headers={"Range": "bytes=0-99"})
     assert parcial.status_code == 206 and len(parcial.content) == 100                  # admite saltos (Range)
 
